@@ -1,0 +1,22 @@
+# Dados e modelos pesados
+data/raw/
+data/processed/
+models/*
+!models/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Vídeos grandes
+*.mp4
+*.avi
+
+# Sistema
+.DS_Store
+Thumbs.db
