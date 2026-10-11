@@ -1,8 +1,6 @@
 # Dados e modelos pesados
 data/raw/
 data/processed/
-models/*
-!models/.gitkeep
 
 # Python
 __pycache__/
