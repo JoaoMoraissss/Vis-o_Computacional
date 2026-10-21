@@ -223,14 +223,17 @@ def verify(cand_i, cand_j, img_ids, det_xy, det_tree, index, tol_px: float, img_
 
 
 def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
-             n_stars: int = 20, tol_frac: float = 0.006, n_hyp: int = 100,
-             n_score: int = 30, min_score: float = 0.5, min_con_stars: int = 4):
+             n_stars: int = 20, tol_frac: float = 0.006, n_hyp: int = 300,
+             n_score: int = 30, min_score: float = 0.5, min_con_stars: int = 4,
+             max_fov: float = 100.0, verify_mult: float = 1.0,
+             order: str = "both", stop_score: float = 0.9):
     """Passos 2 a 4: pose da câmara, estrela de cada deteção e constelações na imagem.
 
     4a. Teste rápido (verify) a todos os candidatos; ficam as n_hyp melhores hipóteses.
     4b. Para cada hipótese, estima a pose da câmara e projeta o catálogo INTEIRO.
         Score = fração das n_score deteções mais brilhantes que caem em cima de uma
-        estrela do catálogo. Uma pose errada explica poucas (só por acaso); a certa
+        das 3*n_score estrelas do catálogo mais brilhantes dentro da imagem.
+        Poses com FOV fora de ]1°, max_fov[ são rejeitadas. Uma pose errada explica poucas (só por acaso); a certa
         explica quase todas. Fica a melhor, se o score passar de min_score.
     4c. Com a pose escolhida, associa todas as deteções ao catálogo e refina a pose.
         Uma constelação é reportada se tiver pelo menos min_con_stars estrelas das linhas identificadas.
@@ -250,9 +253,30 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
 
     # 4a: teste rápido e ordenação
     desc, ids = image_triangles(det, n_stars)
-    hyps = [hy for i, j in find_candidates(desc, index, eps)
-            if (hy := verify(i, j, ids, det_xy, det_tree, index, tol_px, img_shape))]
-    hyps.sort(key=lambda hy: -hy["n"])
+    if "tri_maxmag" not in index:      # magnitude da estrela mais fraca de cada triângulo do catálogo
+        mag = pd.Series(catalog["mag"].values, index=catalog["hip"].fillna(-1).astype(int))
+        mag = mag[~mag.index.duplicated()]
+        index["tri_maxmag"] = mag.reindex(index["hips"].ravel()).values.reshape(-1, 3).max(1)
+    hyps = []
+    for i, j in find_candidates(desc, index, eps):
+        hy = verify(i, j, ids, det_xy, det_tree, index, verify_mult * tol_px, img_shape)
+        if hy:
+            hy["faint_det"] = ids[i].max()                 # posição da estrela mais fraca da imagem
+            hy["faint_cat"] = index["tri_maxmag"][j]       # magnitude da mais fraca do catálogo
+            hyps.append(hy)
+    # Duas formas de ordenar, cada uma melhor num tipo de imagem:
+    #   brilho:  primeiro os triângulos de estrelas brilhantes (na imagem e no catálogo).
+    #            Funciona melhor nas fotos reais de grande angular, onde a deformação
+    #            estraga a contagem do teste rápido.
+    #   inliers: primeiro as hipóteses com mais estrelas a bater no teste rápido.
+    by_bright = sorted(hyps, key=lambda hy: (hy["faint_det"], hy["faint_cat"], -hy["n"]))
+    by_inliers = sorted(hyps, key=lambda hy: -hy["n"])
+    if order == "brightness":
+        hyps = by_bright
+    elif order == "inliers":
+        hyps = by_inliers
+    else:                               # "both": alterna uma de cada
+        hyps = [hy for pair in zip(by_bright, by_inliers) for hy in pair]
 
     # 4b: pose da câmara para as melhores hipóteses, avaliada com o catálogo inteiro
     best, seen = None, set()
@@ -272,11 +296,14 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
             pose = P.refine_pose(pose, catalog.iloc[rows], det_xy[k], img_shape)
         except ValueError:
             continue
-        di, _ = P.match_catalog(pose, catalog, det_xy[:n_top], img_shape, tol_px)
+        if not (1.0 < pose[3] < max_fov):     # FOV impossível para uma foto normal
+            continue
+        di, _ = P.match_catalog(pose, catalog, det_xy[:n_top], img_shape, tol_px,
+                                n_brightest=3 * n_top)
         score = len(di) / n_top
         if best is None or score > best[0]:
             best = (score, pose)
-        if score >= 0.9:            # já explica quase tudo: não vale a pena testar mais
+        if score >= stop_score:     # já explica quase tudo: não vale a pena testar mais
             break
 
     if best is None or best[0] < min_score:
@@ -348,15 +375,14 @@ def evaluate_identification(min_con_stars: int = 4, **kw):
     """
     import time
     import cv2
-    from preprocessing import preprocess
-    from detection import detect_stars
+    from detection import find_stars
 
     index = load_catalog_index()
     synth = Path(__file__).resolve().parent.parent / "data" / "synthetic"
     rows = []
     for png in sorted(synth.glob("sky_*.png")):
         gray = cv2.imread(str(png), cv2.IMREAD_GRAYSCALE)
-        det = detect_stars(preprocess(gray))
+        det = find_stars(gray)
         det_hip = _truth_hips(det, pd.read_csv(png.with_name(png.stem + "_truth.csv")))
         params = dict(l.split("=") for l in png.with_name(png.stem + "_params.txt").read_text().split())
         ra_t, dec_t = float(params["ra0"]), float(params["dec0"])

@@ -63,14 +63,20 @@ def refine_pose(pose, stars: pd.DataFrame, pix: np.ndarray, img_shape):
     return res.x
 
 
-def match_catalog(pose, catalog: pd.DataFrame, det_xy: np.ndarray, img_shape, tol_px: float):
+def match_catalog(pose, catalog: pd.DataFrame, det_xy: np.ndarray, img_shape, tol_px: float,
+                  n_brightest: int | None = None):
     """Projeta o catálogo com a pose e associa cada deteção à estrela projetada mais próxima.
 
     Só aceita pares mútuos (a deteção mais próxima da estrela e vice-versa) e a menos de tol_px.
+    n_brightest: se dado, usa só as n estrelas do catálogo mais brilhantes dentro da imagem.
+      Serve para pontuar poses de forma justa: sem isto, uma pose com FOV enorme mete
+      milhares de estrelas na imagem e acerta em muitas deteções só por acaso.
     Devolve (índices das deteções, índices no catálogo).
     """
     xy, inside = project(catalog, pose, img_shape)
     cat_idx = np.where(inside)[0]
+    if n_brightest is not None:
+        cat_idx = cat_idx[np.argsort(catalog["mag"].values[cat_idx])[:n_brightest]]
     if len(cat_idx) == 0 or len(det_xy) == 0:
         return np.array([], int), np.array([], int)
     cat_xy = xy[cat_idx]
