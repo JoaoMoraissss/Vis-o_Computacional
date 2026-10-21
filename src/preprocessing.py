@@ -9,7 +9,7 @@ O ruído varia de píxel para píxel, por isso atenua-se com um filtro gaussiano
 import cv2
 import numpy as np 
 
-def estimate_background(gray: np.ndarray, ksize, int=51) -> np.ndarray:
+def estimate_background(gray: np.ndarray, ksize: int = 51) -> np.ndarray:
     return cv2.medianBlur(gray, ksize)
 
 
