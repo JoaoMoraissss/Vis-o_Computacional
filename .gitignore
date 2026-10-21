@@ -22,3 +22,4 @@ data/catalog/hygdata_v41.csv
 data/synthetic/
 data/catalog/triangles.npz
 results/demo/
+data/catalog/triangles_sphere.npz

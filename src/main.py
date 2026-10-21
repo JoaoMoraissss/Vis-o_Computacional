@@ -8,7 +8,7 @@ Uso (a partir da raiz do projeto):
 
 Pipeline:
     fase 2  find_stars    top-hat + deteção + filtro de forma + máscara do céu
-    fase 3  identify      triângulos -> candidatos -> pose da câmara
+    fase 3  identify_sphere  triângulos na esfera -> candidatos -> pose da câmara (Kabsch)
     saída   draw_result   linhas e nomes das constelações por cima da foto
 """
 import argparse
@@ -19,7 +19,7 @@ import cv2
 
 from catalog import load_stars, load_constellations
 from detection import find_stars
-from matching import load_catalog_index, identify
+from matching_sphere import load_sphere_index, identify_sphere
 from overlay import draw_result, draw_failure
 from segmentation import sky_mask
 
@@ -35,7 +35,7 @@ def run(path: Path, out_dir: Path, index, stars, consts) -> dict:
 
     t0 = time.perf_counter()
     det = find_stars(gray)
-    result = identify(det, index, gray.shape)
+    result = identify_sphere(det, index, gray.shape)
     dt = time.perf_counter() - t0
 
     if result:
@@ -64,7 +64,7 @@ def main():
     if not paths:
         ap.error("indica pelo menos uma imagem, ou --samples")
 
-    index, stars, consts = load_catalog_index(), load_stars(), load_constellations()
+    index, stars, consts = load_sphere_index(), load_stars(), load_constellations()
     ok = sum(bool(run(p, args.out, index, stars, consts)) for p in paths)
     print(f"\n{ok}/{len(paths)} resolvidas. Resultados em {args.out}")
 
