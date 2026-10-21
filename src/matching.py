@@ -103,6 +103,85 @@ def load_catalog_index():
     return index
 
 
+def image_triangles(det: pd.DataFrame, n_stars: int = 20):
+    """Passo 2: descritores dos triângulos formados pelas estrelas detetadas.
+
+    det: saída de detect_stars (já ordenada do mais brilhante para o menos).
+    Usamos só as n_stars mais brilhantes: são as mais fiáveis (as fracas podem
+    ser ruído) e o número de triângulos cresce muito depressa, C(n,3):
+    20 estrelas -> 1140 triângulos, 40 -> 9880.
+
+    Devolve:
+      desc -> (M, 2) descritores
+      ids  -> (M, 3) índices das estrelas em det, na ordem "oposto a a, b, c"
+    """
+    pts = det[["x", "y"]].values[:n_stars]
+    descs, ids = [], []
+    for tri in combinations(range(len(pts)), 3):
+        tri = np.array(tri)
+        desc, order = triangle_descriptor(pts[tri])
+        if desc[1] < MIN_RATIO:
+            continue
+        descs.append(desc)
+        ids.append(tri[order])
+    return np.array(descs).reshape(-1, 2), np.array(ids).reshape(-1, 3)
+
+
+def find_candidates(img_desc: np.ndarray, index: dict, eps: float = 0.01):
+    """Passo 3: para cada triângulo da imagem, os triângulos do catálogo com forma parecida.
+
+    Procura na KD-tree todos os descritores do catálogo a menos de eps.
+    eps é a tolerância: tem de cobrir o erro da deteção (centróides com ~0.5 px
+    de erro) e a deformação da projeção, mas se for grande demais aparecem
+    imensos falsos candidatos.
+
+    Devolve uma lista de pares (i_imagem, j_catalogo).
+    """
+    neighbors = index["tree"].query_ball_point(img_desc, r=eps)
+    return [(i, j) for i, js in enumerate(neighbors) for j in js]
+
+
+def _truth_hips(det: pd.DataFrame, truth: pd.DataFrame, max_dist: float = 3.0) -> np.ndarray:
+    """Só para avaliar: que estrela HIP é cada deteção (a da verdade mais próxima, se a < max_dist px)."""
+    d, j = cKDTree(truth[["x", "y"]].values).query(det[["x", "y"]].values)
+    hips = truth["hip"].values[j].astype(int)
+    return np.where(d < max_dist, hips, -1)
+
+
+def evaluate_candidates(eps: float = 0.01, n_stars: int = 20):
+    """Corre os passos 2 e 3 em todas as imagens sintéticas e mede:
+      - quantos candidatos aparecem por imagem;
+      - quantos estão certos (os 3 HIPs coincidem, pela mesma ordem);
+      - em quantas imagens há pelo menos um candidato certo (sem isso, o passo 4 não tem hipótese).
+    """
+    import cv2
+    from preprocessing import preprocess
+    from detection import detect_stars
+
+    index = load_catalog_index()
+    synth = Path(__file__).resolve().parent.parent / "data" / "synthetic"
+    rows = []
+    for png in sorted(synth.glob("sky_*.png")):
+        gray = cv2.imread(str(png), cv2.IMREAD_GRAYSCALE)
+        det = detect_stars(preprocess(gray))
+        truth = pd.read_csv(png.with_name(png.stem + "_truth.csv"))
+        det_hip = _truth_hips(det, truth)
+
+        desc, ids = image_triangles(det, n_stars)
+        cands = find_candidates(desc, index, eps)
+        right = sum(np.array_equal(det_hip[ids[i]], index["hips"][j]) for i, j in cands)
+        rows.append({"imagem": png.stem, "triangulos": len(desc),
+                     "candidatos": len(cands), "certos": right})
+
+    df = pd.DataFrame(rows)
+    print(df.to_string(index=False))
+    ok = (df["certos"] > 0).mean()
+    prec = df["certos"].sum() / max(df["candidatos"].sum(), 1)
+    print(f"\neps={eps}, n_stars={n_stars}: imagens com pelo menos 1 candidato certo: {ok:.0%}; "
+          f"candidatos certos: {prec:.2%}")
+    return df
+
+
 if __name__ == "__main__":
     idx = build_catalog_index()
     n = len(idx["desc"])
@@ -123,3 +202,7 @@ if __name__ == "__main__":
     nn = d[:, 1]
     print(f"distância ao triângulo mais parecido: mediana {np.median(nn):.4f}, "
           f"{(nn < 0.01).mean():.0%} têm outro a menos de 0.01")
+
+    # Passos 2 e 3 nas imagens sintéticas
+    print()
+    evaluate_candidates(eps=0.01, n_stars=20)
