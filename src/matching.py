@@ -311,6 +311,14 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
 
     # 4c: associação final e refinamento com todas as deteções
     score, pose = best
+    return finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars)
+
+
+def finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars=4):
+    """Passo 4c: com uma pose já boa, associa todas as deteções ao catálogo,
+    refina a pose com todas elas e decide que constelações reportar."""
+    import projection as P
+    catalog = index["stars"]
     for _ in range(2):
         di, ci = P.match_catalog(pose, catalog, det_xy, img_shape, tol_px)
         pose = P.refine_pose(pose, catalog.iloc[ci], det_xy[di], img_shape)
@@ -319,9 +327,22 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
     stars = pd.DataFrame({"det": di, "hip": catalog["hip"].fillna(-1).values[ci].astype(int),
                           "proper": catalog["proper"].values[ci], "x": det_xy[di, 0], "y": det_xy[di, 1]})
     found = set(stars["hip"])
-    consts = {a: [h for h in p["hip"] if h in found] for a, p in index["planes"].items()}
-    consts = {a: hs for a, hs in consts.items() if len(hs) >= min_con_stars}
+    _, inside = P.project(catalog, pose, img_shape)
+    in_view = set(catalog["hip"].fillna(-1).astype(int).values[inside])
+    consts = {}
+    for a, p in index["planes"].items():
+        hs = [h for h in p["hip"] if h in found]
+        n_view = sum(h in in_view for h in p["hip"])
+        if report_constellation(len(hs), n_view, min_con_stars):
+            consts[a] = hs
     return {"pose": pose, "score": score, "stars": stars, "constellations": consts}
+
+
+def report_constellation(n_found: int, n_in_view: int, min_con_stars: int = 4) -> bool:
+    """Reportar uma constelação se tiver pelo menos min_con_stars estrelas identificadas,
+    ou, para constelações pequenas (o Cruzeiro do Sul tem 4 estrelas nas linhas),
+    pelo menos 3 que sejam >= 60% das suas estrelas visíveis na imagem."""
+    return n_found >= min_con_stars or (n_found >= 3 and n_found >= 0.6 * n_in_view)
 
 
 def _truth_hips(det: pd.DataFrame, truth: pd.DataFrame, max_dist: float = 3.0) -> np.ndarray:
@@ -365,11 +386,11 @@ def evaluate_candidates(eps: float = 0.01, n_stars: int = 20):
     return df
 
 
-def evaluate_identification(min_con_stars: int = 4, **kw):
+def evaluate_identification(min_con_stars: int = 4, identify_fn=None, index=None, **kw):
     """Avalia o passo 4 nas imagens sintéticas.
 
-    "Presentes" = constelações com pelo menos min_con_stars estrelas das linhas detetadas
-    (mesmo critério que identify usa para reportar).
+    "Presentes" = constelações cujas estrelas detetadas passam report_constellation
+    (o mesmo critério que identify usa para reportar).
     Mede, por imagem: constelações encontradas certas (TP), inventadas (FP), falhadas (FN),
     a percentagem de estrelas com o HIP certo e o erro da pose estimada.
     """
@@ -377,7 +398,7 @@ def evaluate_identification(min_con_stars: int = 4, **kw):
     import cv2
     from detection import find_stars
 
-    index = load_catalog_index()
+    index = index or load_catalog_index()
     synth = Path(__file__).resolve().parent.parent / "data" / "synthetic"
     rows = []
     for png in sorted(synth.glob("sky_*.png")):
@@ -387,9 +408,12 @@ def evaluate_identification(min_con_stars: int = 4, **kw):
         params = dict(l.split("=") for l in png.with_name(png.stem + "_params.txt").read_text().split())
         ra_t, dec_t = float(params["ra0"]), float(params["dec0"])
 
-        present = {a for a, p in index["planes"].items() if np.isin(p["hip"], det_hip).sum() >= min_con_stars}
+        truth = pd.read_csv(png.with_name(png.stem + "_truth.csv"))
+        present = {a for a, p in index["planes"].items()
+                   if report_constellation(np.isin(p["hip"], det_hip).sum(),
+                                           np.isin(p["hip"], truth["hip"]).sum(), min_con_stars)}
         t0 = time.perf_counter()
-        res = identify(det, index, gray.shape, min_con_stars=min_con_stars, **kw)
+        res = (identify_fn or identify)(det, index, gray.shape, min_con_stars=min_con_stars, **kw)
         dt = time.perf_counter() - t0
         found = set(res.get("constellations", {}))
 
