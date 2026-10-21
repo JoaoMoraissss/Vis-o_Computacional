@@ -314,15 +314,47 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
     return finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars)
 
 
-def finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars=4):
+FINAL_SCHEDULES = {
+    # (multiplicador da tolerância, "bright" ou "all" no catálogo, nº de deteções ou None = todas)
+    "simples": ((1, "all", None), (1, "all", None)),
+    "grosso_fino": ((4, "bright", 60), (2, "bright", 60), (1, "all", None), (1, "all", None)),
+    "suave": ((2, "bright", None), (1, "all", None), (1, "all", None)),
+    # como "suave", mas na fase das brilhantes ajusta também a distorção radial k1
+    "suave_k1": ((2, "bright_k1", None), (1, "all", None), (1, "all", None)),
+    # estrelas brilhantes do catálogo só com as 60 deteções mais brilhantes
+    # (evita que uma estrela fraca ao lado "roube" o par de uma brilhante), com k1
+    "brilhantes_k1": ((3, "bright_k1", 60), (2, "bright_k1", 60), (1, "all", None), (1, "all", None)),
+}
+
+
+def finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars=4, fit_lens: bool = False,
+             schedule: str = "suave", final_div: float = 1.0):
     """Passo 4c: com uma pose já boa, associa todas as deteções ao catálogo,
     refina a pose com todas elas e decide que constelações reportar."""
     import projection as P
     catalog = index["stars"]
-    for _ in range(2):
-        di, ci = P.match_catalog(pose, catalog, det_xy, img_shape, tol_px)
-        pose = P.refine_pose(pose, catalog.iloc[ci], det_xy[di], img_shape)
-    di, ci = P.match_catalog(pose, catalog, det_xy, img_shape, tol_px / 2)
+    # do grosso para o fino: se a pose inicial estiver uns 50 px ao lado, com a
+    # tolerância apertada as estrelas brilhantes não emparelham e o ajuste agarra-se
+    # a estrelas fracas por acaso. Primeiro só as brilhantes (catálogo E deteções)
+    # com tolerância larga; depois aperta-se e usa-se tudo.
+    bright = catalog[catalog["mag"] <= 4.5]
+    for mult, which, n_det in FINAL_SCHEDULES[schedule]:
+        cat = bright if which.startswith("bright") else catalog
+        di, ci = P.match_catalog(pose, cat, det_xy[:n_det], img_shape, mult * tol_px)
+        if len(di) >= 3:
+            # fit_lens: ajusta também a lente (centro ótico e distorção). Desligado por
+            # defeito: nas fotos testadas os 3 parâmetros a mais seguiam emparelhamentos
+            # errados com estrelas fracas (overfitting) em vez de corrigir a lente.
+            if which == "bright_k1" and len(di) >= 8:
+                ext = "k1"
+            elif len(pose) == 7:
+                ext = "k1"            # mantém o k1 já estimado e continua a afiná-lo
+            else:
+                ext = fit_lens and n_det is None and len(di) >= 20
+            pose = P.refine_pose(pose, cat.iloc[ci], det_xy[di], img_shape, extended=ext)
+    # identificação final: tolerância completa (antes era metade, exigente demais
+    # para fotos editadas, onde a geometria não é exatamente a de uma câmara)
+    di, ci = P.match_catalog(pose, catalog, det_xy, img_shape, tol_px / final_div)
 
     stars = pd.DataFrame({"det": di, "hip": catalog["hip"].fillna(-1).values[ci].astype(int),
                           "proper": catalog["proper"].values[ci], "x": det_xy[di, 0], "y": det_xy[di, 1]})

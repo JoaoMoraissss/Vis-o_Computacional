@@ -12,7 +12,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from synthetic import gnomonic, project_to_pixels
+from synthetic import gnomonic
+from projection import project
 
 LINE_COLOR = (255, 190, 90)       # BGR: azul claro
 NAME_COLOR = (90, 220, 255)       # amarelo
@@ -39,9 +40,10 @@ def draw_result(img: np.ndarray, result: dict, stars: pd.DataFrame, consts: dict
     u = w / 1000                                  # unidade de espessura/tamanho, cresce com a imagem
     thick = max(1, round(1.5 * u))
     font = cv2.FONT_HERSHEY_SIMPLEX
-    ra0, dec0, roll, fov = result["pose"]
+    ra0, dec0, roll, fov = result["pose"][:4]
 
-    x, y, inside = project_to_pixels(stars, ra0, dec0, fov, roll, w, h)
+    xy, inside = project(stars, result["pose"], (h, w))      # inclui a lente, se ajustada
+    x, y = xy[:, 0], xy[:, 1]
     front = gnomonic(stars["ra_deg"].values, stars["dec_deg"].values, ra0, dec0)[2]
     hips = stars["hip"].fillna(-1).astype(int).values
     pos = {hp: (x[i], y[i], inside[i], front[i]) for i, hp in enumerate(hips)}

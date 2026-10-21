@@ -25,6 +25,25 @@ from segmentation import sky_mask
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Ordem de tentativas: cada uma ordena as deteções de forma diferente.
+#   flux: brilho total (bom em geral)
+#   clip: pico, com as estrelas quase saturadas empatadas (melhor quando há
+#         manchas grandes e difusas, ou halos, que inflacionam o brilho total)
+#   lens="fish": último recurso, lente olho-de-peixe / ultra grande angular
+ATTEMPTS = ({"rank": "flux"}, {"rank": "clip"},
+            {"rank": "flux", "lens": "fish"}, {"rank": "clip", "lens": "fish"})
+
+
+def solve(gray, index, attempts=ATTEMPTS):
+    """Fase 2 + fase 3 para uma imagem. Se uma tentativa falhar, passa à seguinte.
+    Devolve (resultado, deteções usadas); resultado vazio se nenhuma resultar."""
+    for kw in attempts:
+        det = find_stars(gray, rank=kw["rank"])
+        result = identify_sphere(det, index, gray.shape, lens=kw.get("lens", "rect"))
+        if result:
+            return result, det
+    return {}, det
+
 
 def run(path: Path, out_dir: Path, index, stars, consts) -> dict:
     img = cv2.imread(str(path))
@@ -34,13 +53,13 @@ def run(path: Path, out_dir: Path, index, stars, consts) -> dict:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     t0 = time.perf_counter()
-    det = find_stars(gray)
-    result = identify_sphere(det, index, gray.shape)
+    result, det = solve(gray, index)
     dt = time.perf_counter() - t0
 
     if result:
         names = ", ".join(consts[a]["name"] for a in sorted(result["constellations"])) or "(nenhuma completa)"
-        print(f"{path.name}: {names}  [FOV {result['pose'][3]:.0f}°, score {result['score']:.2f}, {dt:.1f} s]")
+        lens = ", olho-de-peixe" if len(result["pose"]) == 5 else ""
+        print(f"{path.name}: {names}  [FOV {result['pose'][3]:.0f}°{lens}, score {result['score']:.2f}, {dt:.1f} s]")
         out = draw_result(img, result, stars, consts, sky=sky_mask(gray))
     else:
         print(f"{path.name}: sem solução ({len(det)} deteções, {dt:.1f} s)")
