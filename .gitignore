@@ -20,3 +20,4 @@ venv/
 Thumbs.db
 data/catalog/hygdata_v41.csv
 data/synthetic/
+data/catalog/triangles.npz
