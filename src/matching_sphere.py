@@ -106,9 +106,27 @@ def load_sphere_index(bright_mag: float = 5.0) -> dict:
     return index
 
 
-def pixel_rays(xy: np.ndarray, f: float, w: int, h: int) -> np.ndarray:
-    """Píxeis -> raios unitários no referencial da câmara (x direita, y baixo, z em frente)."""
-    D = np.column_stack([xy[:, 0] - w / 2, xy[:, 1] - h / 2, np.full(len(xy), f)])
+def focal(F_deg: float, w: int, lens: str = "rect") -> float:
+    """Distância focal em píxeis para um FOV (largura) e um tipo de lente."""
+    if lens == "fish":
+        return (w / 2) / np.radians(F_deg / 2)          # r = f·θ
+    return (w / 2) / np.tan(np.radians(F_deg) / 2)      # r = f·tan(θ)
+
+
+def fov_from_focal(f: float, w: int, lens: str = "rect") -> float:
+    if lens == "fish":
+        return np.degrees(2 * (w / 2) / f)
+    return np.degrees(2 * np.arctan((w / 2) / f))
+
+
+def pixel_rays(xy: np.ndarray, f: float, w: int, h: int, lens: str = "rect") -> np.ndarray:
+    """Píxeis -> raios unitários no referencial da câmara (x direita, y baixo, z em frente).
+    lens="rect": lente normal (pinhole). lens="fish": olho-de-peixe equidistante (θ = r/f)."""
+    u, v = xy[:, 0] - w / 2, xy[:, 1] - h / 2
+    if lens == "fish":
+        th, phi = np.hypot(u, v) / f, np.arctan2(v, u)
+        return np.column_stack([np.sin(th) * np.cos(phi), np.sin(th) * np.sin(phi), np.cos(th)])
+    D = np.column_stack([u, v, np.full(len(xy), f)])
     return D / np.linalg.norm(D, axis=1, keepdims=True)
 
 
@@ -120,23 +138,29 @@ def kabsch(V: np.ndarray, D: np.ndarray) -> np.ndarray:
     return Vt.T @ np.diag([1, 1, d]) @ U.T
 
 
-def project_rows(R, f, rows, vec, w, h):
+def project_rows(R, f, rows, vec, w, h, lens: str = "rect"):
     """Projeta as estrelas `rows` com a câmara (R, f). Devolve xy e máscara de dentro da imagem."""
     Pc = vec[rows] @ R.T
     z = Pc[:, 2]
     with np.errstate(divide="ignore", invalid="ignore"):
-        x = w / 2 + f * Pc[:, 0] / z
-        y = h / 2 + f * Pc[:, 1] / z
+        if lens == "fish":
+            th = np.arccos(np.clip(z, -1, 1))
+            rxy = np.hypot(Pc[:, 0], Pc[:, 1])
+            k = np.where(rxy > 1e-12, f * th / rxy, 0.0)
+            x, y = w / 2 + k * Pc[:, 0], h / 2 + k * Pc[:, 1]
+        else:
+            x = w / 2 + f * Pc[:, 0] / z
+            y = h / 2 + f * Pc[:, 1] / z
     inside = (z > 0) & (x >= 0) & (x < w) & (y >= 0) & (y < h)
     return np.column_stack([x, y]), inside
 
 
-def score_camera(R, f, index, top_xy, img_shape, tol_px, n_brightest):
+def score_camera(R, f, index, top_xy, img_shape, tol_px, n_brightest, lens: str = "rect"):
     """Fração das deteções mais brilhantes explicadas pelas n_brightest estrelas do
     catálogo mais brilhantes dentro da imagem. Devolve (score, pares det -> linha do catálogo)."""
     h, w = img_shape
     rows = index["bright_rows"]
-    xy, inside = project_rows(R, f, rows, index["vec"], w, h)
+    xy, inside = project_rows(R, f, rows, index["vec"], w, h, lens)
     sel = np.where(inside)[0][:n_brightest]
     if len(sel) < 3:
         return 0.0, []
@@ -148,7 +172,8 @@ def score_camera(R, f, index, top_xy, img_shape, tol_px, n_brightest):
     return len(pairs) / len(top_xy), [(di, int(rows[sel[k]])) for k, di in pairs.items()]
 
 
-def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps: int = 31):
+def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps: int = 31,
+                  lens: str = "rect"):
     """Ajusta o FOV (via f) e a rotação às estrelas emparelhadas.
 
     Com o FOV suposto da grelha (até ~13% errado), a rotação de Kabsch acerta
@@ -159,7 +184,7 @@ def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps:
     di = np.array([p[0] for p in pairs]); V = index["vec"][[p[1] for p in pairs]]
     best = None
     for fs in f * np.linspace(1 - span, 1 + span, steps):
-        D = pixel_rays(det_xy[di], fs, w, h)
+        D = pixel_rays(det_xy[di], fs, w, h, lens)
         R = kabsch(V, D)
         err = (1 - (V @ R.T * D).sum(1)).sum()
         if best is None or err < best[0]:
@@ -167,17 +192,18 @@ def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps:
     return best[1], best[2]
 
 
-def camera_to_pose(R, f, pairs, det_xy, index, img_shape):
+def camera_to_pose(R, f, pairs, det_xy, index, img_shape, lens: str = "rect"):
     """Converte (R, f) para (ra0, dec0, roll, fov) do modelo de projection.py e refina.
     O roll procura-se numa grelha (é só 1 número), o resto sai diretamente de R e f."""
     h, w = img_shape
     ra0, dec0 = vec_to_radec(R.T @ np.array([0.0, 0.0, 1.0]))     # para onde aponta o eixo
-    fov = np.degrees(2 * np.arctan((w / 2) / f))
+    fov = fov_from_focal(f, w, lens)
+    extra = [P.FISHEYE] if lens == "fish" else []
     di = np.array([p[0] for p in pairs]); rows = np.array([p[1] for p in pairs])
     cat = index["stars"].iloc[rows]
-    errs = [np.abs(P.project(cat, (ra0, dec0, r, fov), img_shape)[0] - det_xy[di]).sum()
+    errs = [np.abs(P.project(cat, [ra0, dec0, r, fov] + extra, img_shape)[0] - det_xy[di]).sum()
             for r in range(0, 360, 5)]
-    pose = np.array([ra0, dec0, 5.0 * int(np.argmin(errs)), fov])
+    pose = np.array([ra0, dec0, 5.0 * int(np.argmin(errs)), fov] + extra)
     return P.refine_pose(pose, cat, det_xy[di], img_shape)
 
 
@@ -185,22 +211,25 @@ def identify_sphere(det: pd.DataFrame, index: dict, img_shape, n_stars: int = 20
                     eps: float = 0.01, size_tol: float = 0.15, tol_frac: float = 0.006,
                     n_score: int = 30, min_score: float = 0.5, stop_score: float = 0.9,
                     max_hyp: int = 5000, min_con_stars: int = 4, fov_guesses=FOV_GUESSES,
-                    coarse_mult: float = 3.0, coarse_min: float = 0.15):
-    """Passos 2 a 4 com triângulos na esfera. Mesma saída que matching.identify."""
+                    coarse_mult: float = 3.0, coarse_min: float = 0.15,
+                    weak_score: float = 0.3, ratio: float = 1.8, schedule: str = "suave",
+                    lens: str = "rect"):
+    """Passos 2 a 4 com triângulos na esfera. Mesma saída que matching.identify.
+    lens: "rect" (lente normal) ou "fish" (olho-de-peixe), ver pixel_rays."""
     h, w = img_shape
     det_xy = det[["x", "y"]].values
     n = min(n_stars, len(det))
     if n < 3:
         return {}
-    tol_px = tol_frac * w
+    tol_px = tol_frac * max(h, w)          # lado maior: fotos ao alto não ficam com tolerância menor
     top_xy = det_xy[:min(n_score, len(det))]
     combos = np.array(list(combinations(range(n), 3)))
 
     # 2 + 3: para cada FOV suposto, triângulos da imagem e candidatos (forma E tamanho)
     hyps, rays = [], {}
     for F in fov_guesses:
-        f = (w / 2) / np.tan(np.radians(F) / 2)
-        D = pixel_rays(det_xy[:n], f, w, h)
+        f = focal(F, w, lens)
+        D = pixel_rays(det_xy[:n], f, w, h, lens)
         rays[F] = (f, D)
         desc, a, ids = triangles_from_angles(angle_matrix(D), combos)
         for i, js in enumerate(index["s_tree"].query_ball_point(desc, eps)):
@@ -216,30 +245,42 @@ def identify_sphere(det: pd.DataFrame, index: dict, img_shape, n_stars: int = 20
     #    refinar FOV e rotação com os pares encontrados -> contagem final rigorosa.
     hyps.sort(key=lambda t: (t[0], t[1]))
     best = None
+    runner_up = 0.0           # melhor score de uma pose DIFERENTE da melhor (eixo a > 5°)
     nb = 3 * len(top_xy)
     for _, _, F, tri, j in hyps[:max_hyp]:
         f, D = rays[F]
         R = kabsch(index["vec"][index["s_rows"][j]], D[list(tri)])
-        coarse, pairs = score_camera(R, f, index, top_xy, img_shape, coarse_mult * tol_px, nb)
+        coarse, pairs = score_camera(R, f, index, top_xy, img_shape, coarse_mult * tol_px, nb, lens)
         if coarse < coarse_min:
             continue
         for _ in range(2):
-            R, f = refine_camera(pairs, det_xy, index, f, img_shape)
-            score, pairs = score_camera(R, f, index, top_xy, img_shape, tol_px, nb)
+            R, f = refine_camera(pairs, det_xy, index, f, img_shape, lens=lens)
+            score, pairs = score_camera(R, f, index, top_xy, img_shape, tol_px, nb, lens)
             if len(pairs) < 3:
                 break
+        axis = R.T @ np.array([0.0, 0.0, 1.0])
         if best is None or score > best[0]:
-            best = (score, R, f, pairs)
+            if best is not None and best[4] @ axis < np.cos(np.radians(5)):
+                runner_up = max(runner_up, best[0])
+            best = (score, R, f, pairs, axis)
+        elif best[4] @ axis < np.cos(np.radians(5)):
+            runner_up = max(runner_up, score)
         if score >= stop_score:
             break
 
-    if best is None or best[0] < min_score:
+    # Aceitação: score alto, OU (teste da razão, como o de Lowe no SIFT) um score
+    # mais fraco mas claramente melhor do que a melhor alternativa diferente.
+    # Com nuvens ou muitas estrelas tapadas, a pose certa pode ficar abaixo de
+    # min_score; uma pose errada nunca se destaca das outras coincidências.
+    if best is None:
         return {}
-    score, R, f, pairs = best
-    pose = camera_to_pose(R, f, pairs, det_xy, index, img_shape)
+    if best[0] < min_score and not (best[0] >= weak_score and best[0] >= ratio * max(runner_up, 1e-9)):
+        return {}
+    score, R, f, pairs, _ = best
+    pose = camera_to_pose(R, f, pairs, det_xy, index, img_shape, lens)
     if not (1.0 < pose[3] < 120):
         return {}
-    return M.finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars)
+    return M.finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars, schedule=schedule)
 
 
 if __name__ == "__main__":

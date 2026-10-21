@@ -63,20 +63,52 @@ def detect_stars(img: np.ndarray, k: float = 5.0, min_area: int = 3,
     return out[keep].sort_values("flux", ascending=False).reset_index(drop=True)
 
 
-def find_stars(gray: np.ndarray, r_frac: float = 0.004, use_sky_mask: bool = True) -> pd.DataFrame:
+def find_stars(gray: np.ndarray, r_frac: float = 0.004, use_sky_mask: bool = True,
+               scales=(1, 2, 4), rank: str = "flux") -> pd.DataFrame:
     """Pipeline completo da fase 2 para uma imagem em tons de cinzento:
-    top-hat -> deteção -> filtro de forma -> só o que está no céu.
+    top-hat (várias escalas) -> deteção -> filtro de forma -> só o que está no céu.
 
-    A área máxima é 2x a do disco do top-hat: uma mancha maior que isso não é uma estrela.
+    Multi-escala: em astrofotos processadas as estrelas mais brilhantes têm halos
+    grandes (20-40 px), maiores que o disco do top-hat, e eram apagadas como se
+    fossem paisagem. Corre-se o top-hat com raios r, 2r, 4r: cada estrela é
+    apanhada na escala do seu tamanho. Na mesma estrela vista em várias escalas
+    fica só a deteção com mais brilho (supressão de não-máximos).
+
+    A área máxima em cada escala é 2x a do disco: maior que isso não é uma estrela.
     """
+    from scipy.spatial import cKDTree
     from preprocessing import tophat
     from segmentation import sky_mask
 
-    img, r = tophat(gray, r_frac)
-    det = detect_stars(img, max_area=2 * np.pi * r * r)
+    parts = []
+    for sc in scales:
+        img, r = tophat(gray, r_frac * sc)
+        d = detect_stars(img, max_area=2 * np.pi * r * r)
+        d["r"] = r
+        parts.append(d)
+    det = pd.concat(parts, ignore_index=True).sort_values("flux", ascending=False)
+    det = det.reset_index(drop=True)
+
+    if len(scales) > 1 and len(det):
+        xy = det[["x", "y"]].values
+        tree = cKDTree(xy)
+        keep = np.ones(len(det), bool)
+        for i in range(len(det)):              # da mais brilhante para a menos
+            if keep[i]:
+                for j in tree.query_ball_point(xy[i], det["r"].iat[i]):
+                    if j > i:
+                        keep[j] = False
+        det = det[keep].reset_index(drop=True)
+
     if use_sky_mask and len(det):
         mask = sky_mask(gray)
         xi = det["x"].round().astype(int).clip(0, gray.shape[1] - 1)
         yi = det["y"].round().astype(int).clip(0, gray.shape[0] - 1)
         det = det[mask[yi, xi]].reset_index(drop=True)
-    return det
+
+    if rank == "peak":
+        det = det.sort_values("peak", ascending=False)
+    elif rank == "clip":
+        cap = 0.8 * det["peak"].max() if len(det) else 0
+        det = det.assign(_k=det["peak"].clip(upper=cap)).sort_values(["_k", "flux"], ascending=False).drop(columns="_k")
+    return det.reset_index(drop=True)

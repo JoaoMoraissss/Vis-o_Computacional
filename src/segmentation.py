@@ -16,6 +16,9 @@ Regras (cada uma sozinha falhava num tipo de foto):
      do céu é Via Láctea, nebulosa ou o halo de uma estrela.
 No fim encolhe-se a máscara um pouco para afastar a linha do horizonte.
 
+Antes de tudo normaliza-se o contraste (percentis 1 e 99.5), para uma foto
+muito escura se comportar como uma clara.
+
 Limitação conhecida: chão escuro e liso (água, campo de noite) ligado ao céu
 por uma zona lisa fica marcado como céu. Como quase não tem deteções, não estraga muito.
 """
@@ -23,7 +26,7 @@ import cv2
 import numpy as np
 
 
-def sky_mask(gray: np.ndarray, k: float = 3.0, work_width: int = 600) -> np.ndarray:
+def sky_mask(gray: np.ndarray, k: float = 3.0, work_width: int = 600, link: int = 1) -> np.ndarray:
     """Máscara booleana (True = céu), do mesmo tamanho que gray.
 
     k: uma zona é "lisa" se a textura for menor que k vezes a textura típica
@@ -34,6 +37,11 @@ def sky_mask(gray: np.ndarray, k: float = 3.0, work_width: int = 600) -> np.ndar
     h, w = gray.shape
     s = work_width / w
     small = cv2.resize(gray, (work_width, max(1, round(h * s))), interpolation=cv2.INTER_AREA)
+
+    # 0. normalizar o contraste: numa foto muito escura toda a textura fica abaixo
+    #    de 1 nível de cinzento e a paisagem passava por céu liso
+    lo, hi = np.percentile(small, [1, 99.5])
+    small = np.clip((small.astype(np.float32) - lo) * 255 / max(hi - lo, 1), 0, 255).astype(np.uint8)
 
     # 1. apagar as estrelas: a abertura remove tudo o que é menor que o disco
     disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
@@ -47,8 +55,11 @@ def sky_mask(gray: np.ndarray, k: float = 3.0, work_width: int = 600) -> np.ndar
     smooth = cv2.morphologyEx(smooth, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
 
     # 3. regra 2: zonas texturadas que não tocam na borda de baixo contam como céu
+    #    (antes, liga zonas texturadas próximas com uma dilatação: a copa de uma
+    #     árvore tem buracos lisos entre os ramos e ficava "separada" do tronco)
     textured = 1 - smooth
-    _, lab = cv2.connectedComponents(textured)
+    linked = cv2.dilate(textured, np.ones((link, link), np.uint8)) if link > 1 else textured
+    _, lab = cv2.connectedComponents(linked)
     touches_bottom = np.isin(lab, list(set(np.unique(lab[-1])) - {0}))
     floating = textured.astype(bool) & ~touches_bottom
 
