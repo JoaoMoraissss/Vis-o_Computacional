@@ -1,0 +1,13 @@
+foto,esperadas,encontradas,veredicto,tentativa,estrelas,score,seg,fov,erro_px,det_recall,det_prec30
+cas_03_4shadoww.jpg,Cas,Cas,certo,1,136,0.93,1.0,26.2,2.0,1.0,1.0
+cru_04_rauleliasdrago.jpg,Cru,"Car,Cru",certo,2,254,0.43,8.0,52.7,4.4,0.47,0.6
+gem_01_noirlab.jpg,Gem,Gem,certo,1,191,0.73,4.7,43.6,4.8,0.81,0.7
+leo_01_bresson.jpg,Leo,Leo,certo,1,105,0.73,6.3,47.6,4.5,0.9,0.8
+orion_05_schwen.jpg,Ori,"Eri,Lep,Ori,Tau",certo,1,308,0.93,1.2,40.4,4.1,0.86,0.97
+orion_06_tuntorp_floresta.jpg,Ori,Ori,certo,1,81,0.43,6.4,52.2,9.2,0.24,0.47
+orion_07_odense.jpg,"CMa,Ori",Ori,certo,1,30,0.5,3.7,65.6,2.3,0.21,0.63
+tau_01_bresson.jpg,Tau,Tau,certo,1,132,0.9,1.3,27.1,1.3,0.87,0.87
+tri_01_bresson.jpg,"Aql,Cyg,Lyr","Cyg,Lyr",certo,1,201,0.5,8.3,55.0,7.1,0.86,0.73
+tri_02_taipei.jpg,"Aql,Cyg,Lyr","Aql,Cyg,Del,Sge",certo,1,294,0.93,1.3,71.6,0.8,1.0,1.0
+uma_05_blackpool.jpg,-,-,rejeitou,-,0,0.0,3.7,,,,
+uma_06_postes.jpg,UMa,-,falhou,-,0,0.0,26.9,,,,

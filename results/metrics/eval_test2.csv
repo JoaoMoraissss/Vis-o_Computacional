@@ -1,0 +1,10 @@
+foto,esperadas,encontradas,veredicto,tentativa,estrelas,score,seg,fov,erro_px,det_recall,det_prec30
+cru_05_halemaumau.jpg,Cru,"Car,Cen,Cru,Lup",certo,2,84,0.77,10.8,44.3,2.8,0.59,0.77
+orion_08_betula.jpg,Ori,"Eri,Mon,Ori",certo,1,250,0.7,6.1,35.4,3.9,0.69,0.8
+orion_09_tenda.jpg,Ori,Ori,certo,2,133,0.73,10.7,62.8,2.1,0.54,0.8
+orion_10_scion.jpg,Ori,"Eri,Lep,Ori",certo,1,219,0.8,9.9,31.1,4.6,0.97,0.87
+orion_11_alma.jpg,Ori,"CMa,Lep,Mon,Ori",certo,1,340,0.77,6.0,72.8,1.6,0.67,1.0
+sco_03_assy_turgen.jpg,Sco,-,falhou,-,0,0.0,22.7,,,,
+uma_07_holma.jpg,UMa,"Boo,UMa",certo,1,131,0.97,1.1,64.8,0.3,1.0,1.0
+uma_08_blackpool_geograph.jpg,-,-,rejeitou,-,0,0.0,21.8,,,,
+uma_09_yongtai.jpg,UMa,"Dra,UMa,UMi",certo,1,47,0.93,0.3,71.5,0.2,0.92,0.97

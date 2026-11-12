@@ -2,10 +2,13 @@
 Avaliação do pipeline em fotografias reais (e, opcionalmente, nas sintéticas).
 
 Uso (a partir da raiz do projeto):
-    python src/evaluate.py                 # conjunto de teste (data/test/)
+    python src/evaluate.py                 # conjunto de teste bloqueado (data/test3/)
+    python src/evaluate.py --set test2     # 2.º conjunto de teste (data/test2/)
+    python src/evaluate.py --set test      # 1.º conjunto de teste (data/test/)
     python src/evaluate.py --set samples   # fotos usadas no desenvolvimento
     python src/evaluate.py --set all       # as duas, com resumos separados
     python src/evaluate.py --synthetic     # também as imagens sintéticas
+    python src/evaluate.py --mask 2 --out results/metrics/mascara_v2   # máscara do céu v2
 
 Porquê dois conjuntos?
     data/samples/ foi usado para AFINAR o pipeline (limiares, multi-escala, teste da
@@ -14,6 +17,10 @@ Porquê dois conjuntos?
     data/test/ tem fotos nunca vistas durante o desenvolvimento. É o número honesto
     (como o conjunto de teste em aprendizagem automática). Regra: não se mudam
     parâmetros depois de olhar para os resultados do teste.
+    data/test/ foi depois usado para diagnosticar a máscara do céu e deixou de ser
+    limpo; data/test2/ foi juntado antes de avaliar a máscara nova, mas uma falha
+    nele levou a uma correção, por isso também deixou de ser limpo. data/test3/ foi
+    juntado depois dessa correção e antes de qualquer corrida: é o teste atual.
 
 Verdade de referência: labels.csv em cada pasta, com as constelações que a foto
 mostra (pelo título/descrição da fonte, confirmado a olho). Uma linha sem
@@ -54,7 +61,8 @@ from matching_sphere import load_sphere_index, identify_sphere
 from segmentation import sky_mask
 
 ROOT = Path(__file__).resolve().parent.parent
-SETS = {"samples": ROOT / "data" / "samples", "test": ROOT / "data" / "test"}
+SETS = {"samples": ROOT / "data" / "samples", "test": ROOT / "data" / "test",
+        "test2": ROOT / "data" / "test2", "test3": ROOT / "data" / "test3"}
 
 
 def load_labels(folder: Path) -> dict:
@@ -178,16 +186,22 @@ def summary(df: pd.DataFrame, title: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description="Avaliar o pipeline em fotografias reais.")
-    ap.add_argument("--set", choices=["test", "samples", "all"], default="test")
+    ap.add_argument("--set", choices=["test", "test2", "test3", "samples", "all"], default="test3")
     ap.add_argument("--synthetic", action="store_true", help="avaliar também as imagens sintéticas")
+    ap.add_argument("--mask", type=int, choices=[1, 2], default=1,
+                    help="versão da máscara do céu (ver segmentation.py)")
     ap.add_argument("--out", type=Path, default=ROOT / "results" / "metrics")
     args = ap.parse_args()
+    import segmentation
+    segmentation.DEFAULT_VERSION = args.mask
 
     index, consts = load_sphere_index(), load_constellations()
     args.out.mkdir(parents=True, exist_ok=True)
-    names = ["samples", "test"] if args.set == "all" else [args.set]
+    names = list(SETS) if args.set == "all" else [args.set]
     titles = {"samples": "Desenvolvimento (data/samples, usadas para afinar)",
-              "test": "Teste (data/test, nunca vistas)"}
+              "test": "Teste 1 (data/test; usado para diagnosticar a máscara do céu)",
+              "test2": "Teste 2 (data/test2; usado para corrigir a máscara do céu)",
+              "test3": "Teste 3 (data/test3, bloqueado: nunca visto)"}
     report = ["# Resultados da avaliação", ""]
     for s in names:
         print(f"\n{titles[s]}")
