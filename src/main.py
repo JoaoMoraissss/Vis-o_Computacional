@@ -75,7 +75,11 @@ def main():
     ap.add_argument("images", nargs="*", type=Path)
     ap.add_argument("--samples", action="store_true", help="correr em todas as fotos de data/samples/")
     ap.add_argument("--out", type=Path, default=ROOT / "results" / "demo")
+    ap.add_argument("--mask", type=int, choices=[1, 2], default=1,
+                    help="versão da máscara do céu (ver segmentation.py)")
     args = ap.parse_args()
+    import segmentation
+    segmentation.DEFAULT_VERSION = args.mask
 
     paths = list(args.images)
     if args.samples:
