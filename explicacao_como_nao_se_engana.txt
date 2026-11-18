@@ -1,0 +1,99 @@
+COMO É QUE O PROGRAMA NÃO SE ENGANA A DESENHAR AS CONSTELAÇÕES
+(explicação de 18/11/2026, com base em src/main.py + src/matching_sphere.py)
+======================================================================
+
+IDEIA PRINCIPAL
+---------------
+O programa NUNCA tenta "reconhecer Órion" diretamente. Descobre PARA ONDE
+A CÂMARA ESTAVA APONTADA (a pose) e depois desenha o mapa do céu nessa
+posição. As constelações saem de graça no fim. Para desenhar Órion no sítio
+errado, teria de errar a pose da câmara inteira, e há um teste que torna
+isso muito difícil.
+
+Os 4 passos:
+
+
+1. TRIÂNGULOS DE ESTRELAS (gerar palpites)
+-----------------------------------------
+- Ficam só as 20 estrelas mais brilhantes da foto (as mais fiáveis; as
+  fracas podem ser ruído). Com elas formam-se todos os triângulos
+  possíveis: C(20,3) = 1140.
+- Cada triângulo é descrito pela FORMA, não pela posição: os rácios dos
+  lados (b/a, c/a). A forma não muda se a foto estiver rodada, mais perto
+  ou mais longe, por isso dá para a comparar com triângulos de estrelas do
+  catálogo, calculados de antemão.
+- Os lados são medidos em ÂNGULOS no céu, não em píxeis. Isso evita que a
+  lente deforme os triângulos nas bordas. Como não se sabe o zoom da
+  câmara, experimentam-se 20 valores de campo de visão (8° a 100°). Para
+  cada um, o TAMANHO do triângulo em graus também tem de bater certo, e
+  isso já elimina muito lixo.
+- Este passo gera MUITOS palpites errados, e é normal: com milhares de
+  triângulos no céu, há sempre coincidências de forma. Os triângulos
+  servem só para gerar palpites, quem decide é o passo 2.
+
+
+2. TESTAR CADA PALPITE CONTRA O CÉU INTEIRO (o passo que impede os enganos)
+---------------------------------------------------------------------------
+Para cada palpite "este triângulo da foto = aquele triângulo do catálogo":
+  a) calcula a rotação da câmara que encaixa os 3 pares (algoritmo de Kabsch);
+  b) com essa pose, PROJETA O CATÁLOGO INTEIRO na foto e vê onde DEVIAM
+     aparecer as outras estrelas;
+  c) conta quantas das 30 estrelas mais brilhantes da foto caem a menos de
+     ~9 px de uma estrela real do catálogo. Esse é o SCORE.
+
+Porque é que isto resolve o problema:
+  Numa foto de 1530 px de largura, os círculos de 9 px à volta das ~90
+  estrelas do catálogo cobrem cerca de 0.7% da imagem. Uma pose errada só
+  acerta por acaso, em média 0 ou 1 das 30 estrelas.
+  As fotos próprias de 18/11 tiveram score 0.83 e 0.90, ou seja, 25 a 27
+  estrelas em 30 no sítio certo ao mesmo tempo. Uma coincidência dessas,
+  por acaso, é praticamente impossível.
+
+  >>> Um triângulo pode enganar, mas o céu inteiro não. <<<
+
+
+3. REGRAS DE ACEITAÇÃO: NA DÚVIDA, NÃO RESPONDE
+-----------------------------------------------
+A melhor pose só é aceite se:
+  - tiver score >= 0.5, OU
+  - tiver score >= 0.3 E for 1.8x melhor do que a melhor pose DIFERENTE
+    (a mais de 5° de distância). É o TESTE DA RAZÃO DE LOWE, o mesmo do
+    SIFT: a resposta certa tem de se destacar claramente da segunda melhor.
+Há mais duas regras:
+  - o campo de visão tem de ser plausível;
+  - a imagem nunca pode ser um espelho (uma foto normal do céu só roda, não
+    inverte). Proibir o espelho elimina metade dos falsos candidatos.
+
+Se nada passar, a resposta é "SEM SOLUÇÃO". Foi o que aconteceu com a foto
+"Sem título.jpg" (tremida, estrelas em riscos): nenhuma pose chegou ao score
+mínimo e o programa preferiu não responder a inventar.
+-> Para a cadeira isto é uma QUALIDADE: nos conjuntos de teste deu
+   0 respostas erradas, só falhas.
+
+
+4. QUE CONSTELAÇÕES APARECEM
+----------------------------
+Com a pose decidida, cada estrela detetada é associada à estrela do
+catálogo mais próxima e a pose é afinada com todas. Uma constelação só
+aparece na lista se tiver PELO MENOS 4 estrelas das suas linhas
+identificadas na foto (ou 3, se forem >= 60% das que cabem na imagem).
+
+
+O QUE ISTO NÃO GARANTE
+----------------------
+- As linhas são uma PREVISÃO. Na foto ok.jpg, Gémeos e Unicórnio estão
+  desenhados mesmo onde mal se veem estrelas. O programa não as "viu" a
+  todas: desenha onde TÊM de estar, dada a pose. Se a pose está certa (e o
+  Órion confirma que está), o resto também está.
+- A pose tem de vir de uma câmara real. Fotos editadas ou em mosaico
+  (orion_03, leo_01) quebram a geometria, e os desenhos ficam desviados.
+- Um score alto também pode ser verificado à parte. Na "Sem título",
+  reduzida a 25% e a 50%, saiu exatamente a mesma pose (RA 47.8°,
+  Dec +41.1°). Duas tentativas independentes a concordar é mais uma
+  confirmação.
+
+
+RESUMO PARA A APRESENTAÇÃO
+--------------------------
+Os triângulos geram hipóteses baratas e muitas vezes erradas, a verificação
+com o céu inteiro decide, e na dúvida o programa não responde.
