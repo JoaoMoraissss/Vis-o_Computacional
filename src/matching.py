@@ -1,20 +1,8 @@
 """
-Fase 3: identificar as estrelas detetadas (matching com o catálogo).
+Matching por triângulos, 1.ª versão (lados medidos em píxeis).
+A versão usada agora é matching_sphere.py, mas o índice, finalize() e as
+avaliações nas sintéticas continuam aqui.
 
-Ideia: um triângulo de 3 estrelas tem uma forma que não muda quando a foto
-roda, se desloca ou muda de escala (zoom). Ordenando os lados a >= b >= c,
-o par (b/a, c/a) é essa "impressão digital" da forma. Comparamos as
-impressões digitais dos triângulos da imagem com as do catálogo.
-
-Passo 1: descritores de todos os triângulos do catálogo, numa KD-tree.
-Passo 2: descritores dos triângulos das estrelas detetadas.
-Passo 3: candidatos = triângulos do catálogo com forma parecida (pesquisa na KD-tree).
-Passo 4: verificação. Cada candidato dá uma hipótese de pose da câmara; fica a
-         pose que explica mais estrelas detetadas (ver projection.py).
-
-Função principal: identify(det, index, img_shape).
-
-Correr a partir da raiz do projeto:
     python src/matching.py
 """
 from itertools import combinations
@@ -29,49 +17,32 @@ from synthetic import gnomonic
 
 TRIANGLES_NPZ = CATALOG_DIR / "triangles.npz"
 
-# Triângulos com um lado muito curto em relação ao maior são instáveis:
-# um erro de 1 píxel muda muito o rácio c/a. Ficam de fora.
+# triângulos muito achatados são instáveis
 MIN_RATIO = 0.05
 
 
 def triangle_descriptor(p: np.ndarray):
-    """Descritor invariante de um triângulo.
-
-    p: array (3, 2) com as posições dos 3 vértices (em qualquer unidade).
-    Devolve:
-      desc  -> (b/a, c/a), com a >= b >= c os lados
-      order -> índices dos vértices ordenados como "oposto a a", "oposto a b", "oposto a c".
-               Esta ordem é a mesma na imagem e no catálogo, por isso diz-nos que
-               vértice da imagem corresponde a que vértice do catálogo (precisamos no passo 4).
-    """
-    # o lado oposto ao vértice i é o que liga os outros dois
+    """(b/a, c/a) com a >= b >= c, e a ordem dos vértices (oposto a a, b, c)
+    para saber depois que vértice corresponde a qual."""
     sides = np.array([
         np.linalg.norm(p[1] - p[2]),   # oposto ao vértice 0
         np.linalg.norm(p[0] - p[2]),   # oposto ao vértice 1
         np.linalg.norm(p[0] - p[1]),   # oposto ao vértice 2
     ])
-    order = np.argsort(-sides)          # do lado maior para o menor
+    order = np.argsort(-sides)
     a, b, c = sides[order]
     return np.array([b / a, c / a]), order
 
 
 def constellation_stars(abbr: str, stars: pd.DataFrame, consts: dict, max_stars: int) -> pd.DataFrame:
-    """As max_stars estrelas mais brilhantes que fazem parte das linhas da constelação."""
+    """As estrelas mais brilhantes das linhas da constelação."""
     hips = {h for line in consts[abbr]["lines"] for h in line}
     sel = stars[stars["hip"].isin(hips)].drop_duplicates("hip")
     return sel.nsmallest(max_stars, "mag")      # magnitude menor = mais brilhante
 
 
 def build_catalog_index(max_stars: int = 10):
-    """Calcula os descritores de todos os triângulos de cada constelação.
-
-    Para cada constelação:
-      1. escolhe as estrelas mais brilhantes das suas linhas
-         (são as que uma câmara apanha primeiro);
-      2. projeta-as num plano tangente centrado na constelação (gnomónica,
-         a mesma projeção de uma câmara), para as distâncias serem como numa foto;
-      3. calcula o descritor de cada combinação de 3 estrelas.
-    """
+    """Triângulos das 10 estrelas mais brilhantes de cada constelação, no plano tangente."""
     stars, consts = load_stars(), load_constellations()
     descs, hips, cons = [], [], []
 
@@ -90,7 +61,7 @@ def build_catalog_index(max_stars: int = 10):
             if desc[1] < MIN_RATIO:
                 continue
             descs.append(desc)
-            hips.append(hip_arr[tri[order]])     # HIPs já na ordem "oposto a a, b, c"
+            hips.append(hip_arr[tri[order]])
             cons.append(abbr)
 
     index = {"desc": np.array(descs), "hips": np.array(hips), "con": np.array(cons)}
@@ -99,7 +70,7 @@ def build_catalog_index(max_stars: int = 10):
 
 
 def load_catalog_index():
-    """Carrega os triângulos do catálogo (calcula-os se ainda não existirem) e a KD-tree."""
+    """Carrega (ou calcula) os triângulos e monta a KD-tree."""
     if not TRIANGLES_NPZ.exists():
         build_catalog_index()
     data = np.load(TRIANGLES_NPZ)
@@ -110,12 +81,8 @@ def load_catalog_index():
 
 
 def constellation_planes() -> dict:
-    """Para o passo 4: posição no plano tangente de TODAS as estrelas das linhas de cada constelação.
-
-    Usa o mesmo centro de projeção que build_catalog_index, para os vértices dos
-    triângulos e as restantes estrelas estarem no mesmo sistema de coordenadas.
-    Devolve {abbr: {"hip": array, "pts": array (n, 2), "center": (ra0, dec0)}}.
-    """
+    """Todas as estrelas das linhas de cada constelação no plano tangente
+    (mesmo centro que build_catalog_index)."""
     stars, consts = load_stars(), load_constellations()
     planes = {}
     for abbr in consts:
@@ -129,17 +96,7 @@ def constellation_planes() -> dict:
 
 
 def image_triangles(det: pd.DataFrame, n_stars: int = 20):
-    """Passo 2: descritores dos triângulos formados pelas estrelas detetadas.
-
-    det: saída de detect_stars (já ordenada do mais brilhante para o menos).
-    Usamos só as n_stars mais brilhantes: são as mais fiáveis (as fracas podem
-    ser ruído) e o número de triângulos cresce muito depressa, C(n,3):
-    20 estrelas -> 1140 triângulos, 40 -> 9880.
-
-    Devolve:
-      desc -> (M, 2) descritores
-      ids  -> (M, 3) índices das estrelas em det, na ordem "oposto a a, b, c"
-    """
+    """Triângulos das n_stars deteções mais brilhantes (20 -> 1140 triângulos)."""
     pts = det[["x", "y"]].values[:n_stars]
     descs, ids = [], []
     for tri in combinations(range(len(pts)), 3):
@@ -153,33 +110,18 @@ def image_triangles(det: pd.DataFrame, n_stars: int = 20):
 
 
 def find_candidates(img_desc: np.ndarray, index: dict, eps: float = 0.01):
-    """Passo 3: para cada triângulo da imagem, os triângulos do catálogo com forma parecida.
-
-    Procura na KD-tree todos os descritores do catálogo a menos de eps.
-    eps é a tolerância: tem de cobrir o erro da deteção (centróides com ~0.5 px
-    de erro) e a deformação da projeção, mas se for grande demais aparecem
-    imensos falsos candidatos.
-
-    Devolve uma lista de pares (i_imagem, j_catalogo).
-    """
+    """Pares (triângulo da imagem, triângulo do catálogo) com descritor a menos de eps."""
     neighbors = index["tree"].query_ball_point(img_desc, r=eps)
     return [(i, j) for i, js in enumerate(neighbors) for j in js]
 
 
 def fit_similarity(src: np.ndarray, dst: np.ndarray):
-    """Transformação de semelhança (rotação + escala + translação) que leva src a dst,
-    pelo método dos mínimos quadrados (Umeyama). Precisa de pelo menos 2 pares de pontos.
-
-    Não permite espelho: com a imagem em píxeis (y para baixo) e o plano tangente
-    (xi para leste, eta para norte), uma foto normal do céu é só uma rotação do plano,
-    nunca um espelho. Proibir o espelho elimina metade dos falsos candidatos.
-
-    Devolve (scale, R, t), com dst ≈ scale * R @ src + t.
-    """
+    """Semelhança src -> dst por mínimos quadrados (Umeyama), sem espelho.
+    dst ≈ scale * R @ src + t"""
     mu_s, mu_d = src.mean(0), dst.mean(0)
     S, D = src - mu_s, dst - mu_d
     U, sig, Vt = np.linalg.svd(D.T @ S)
-    d = np.sign(np.linalg.det(U @ Vt))          # força rotação (det = +1)
+    d = np.sign(np.linalg.det(U @ Vt))          # sem espelho
     R = U @ np.diag([1, d]) @ Vt
     scale = (sig * [1, d]).sum() / (S ** 2).sum()
     t = mu_d - scale * R @ mu_s
@@ -187,16 +129,8 @@ def fit_similarity(src: np.ndarray, dst: np.ndarray):
 
 
 def verify(cand_i, cand_j, img_ids, det_xy, det_tree, index, tol_px: float, img_shape):
-    """Passo 4a (teste rápido): um candidato (triângulo i da imagem <-> triângulo j do catálogo).
-
-    1. Calcula a semelhança que leva os 3 vértices do catálogo aos 3 da imagem.
-    2. Aplica-a a todas as estrelas da constelação -> onde deviam aparecer na imagem.
-    3. Conta quantas têm uma deteção a menos de tol_px, refina com essas e conta de novo.
-
-    É só aproximado (a semelhança ignora a deformação da projeção), por isso serve
-    para ORDENAR as hipóteses, não para decidir. Quem decide é o passo 4b.
-    Devolve um dicionário com a hipótese, ou None se for rejeitada.
-    """
+    """Teste rápido de um candidato: põe a constelação na imagem com a semelhança
+    e conta quantas estrelas batem. Só serve para ordenar hipóteses."""
     abbr = index["con"][cand_j]
     plane = index["planes"][abbr]
     hip_to_k = {h: k for k, h in enumerate(plane["hip"])}
@@ -205,10 +139,10 @@ def verify(cand_i, cand_j, img_ids, det_xy, det_tree, index, tol_px: float, img_
 
     scale, R, t = fit_similarity(src, dst)
     h, w = img_shape
-    if scale < 0.05 * w:            # constelação com menos de 5% da largura: irrealista
+    if scale < 0.05 * w:            # demasiado pequena
         return None
 
-    for _ in range(2):              # 1.ª contagem + 1 refinamento
+    for _ in range(2):
         proj = scale * plane["pts"] @ R.T + t
         dist, k = det_tree.query(proj)
         ok = dist < tol_px
@@ -227,21 +161,8 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
              n_score: int = 30, min_score: float = 0.5, min_con_stars: int = 4,
              max_fov: float = 100.0, verify_mult: float = 1.0,
              order: str = "both", stop_score: float = 0.9):
-    """Passos 2 a 4: pose da câmara, estrela de cada deteção e constelações na imagem.
-
-    4a. Teste rápido (verify) a todos os candidatos; ficam as n_hyp melhores hipóteses.
-    4b. Para cada hipótese, estima a pose da câmara e projeta o catálogo INTEIRO.
-        Score = fração das n_score deteções mais brilhantes que caem em cima de uma
-        das 3*n_score estrelas do catálogo mais brilhantes dentro da imagem.
-        Poses com FOV fora de ]1°, max_fov[ são rejeitadas. Uma pose errada explica poucas (só por acaso); a certa
-        explica quase todas. Fica a melhor, se o score passar de min_score.
-    4c. Com a pose escolhida, associa todas as deteções ao catálogo e refina a pose.
-        Uma constelação é reportada se tiver pelo menos min_con_stars estrelas das linhas identificadas.
-
-    tol_frac: tolerância de posição em fração da largura (0.006 * 1280 px ≈ 8 px).
-    Devolve um dicionário (vazio se não encontrar solução) com:
-      pose (ra0, dec0, roll, fov), score, stars (DataFrame det -> hip), constellations {abbr: [hips]}
-    """
+    """Versão no plano (antiga). Devolve {} se não houver solução, senão
+    pose, score, stars e constellations."""
     from catalog import load_stars
     import projection as P
 
@@ -251,9 +172,9 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
     catalog = index.setdefault("stars", load_stars())
     hip_row = index.setdefault("hip_row", pd.Series(np.arange(len(catalog)), index=catalog["hip"].fillna(-1).astype(int)))
 
-    # 4a: teste rápido e ordenação
+    # teste rápido a todos os candidatos
     desc, ids = image_triangles(det, n_stars)
-    if "tri_maxmag" not in index:      # magnitude da estrela mais fraca de cada triângulo do catálogo
+    if "tri_maxmag" not in index:
         mag = pd.Series(catalog["mag"].values, index=catalog["hip"].fillna(-1).astype(int))
         mag = mag[~mag.index.duplicated()]
         index["tri_maxmag"] = mag.reindex(index["hips"].ravel()).values.reshape(-1, 3).max(1)
@@ -261,24 +182,20 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
     for i, j in find_candidates(desc, index, eps):
         hy = verify(i, j, ids, det_xy, det_tree, index, verify_mult * tol_px, img_shape)
         if hy:
-            hy["faint_det"] = ids[i].max()                 # posição da estrela mais fraca da imagem
-            hy["faint_cat"] = index["tri_maxmag"][j]       # magnitude da mais fraca do catálogo
+            hy["faint_det"] = ids[i].max()
+            hy["faint_cat"] = index["tri_maxmag"][j]
             hyps.append(hy)
-    # Duas formas de ordenar, cada uma melhor num tipo de imagem:
-    #   brilho:  primeiro os triângulos de estrelas brilhantes (na imagem e no catálogo).
-    #            Funciona melhor nas fotos reais de grande angular, onde a deformação
-    #            estraga a contagem do teste rápido.
-    #   inliers: primeiro as hipóteses com mais estrelas a bater no teste rápido.
+    # brilho funcionava melhor nas reais, inliers nas sintéticas -> alternar
     by_bright = sorted(hyps, key=lambda hy: (hy["faint_det"], hy["faint_cat"], -hy["n"]))
     by_inliers = sorted(hyps, key=lambda hy: -hy["n"])
     if order == "brightness":
         hyps = by_bright
     elif order == "inliers":
         hyps = by_inliers
-    else:                               # "both": alterna uma de cada
+    else:
         hyps = [hy for pair in zip(by_bright, by_inliers) for hy in pair]
 
-    # 4b: pose da câmara para as melhores hipóteses, avaliada com o catálogo inteiro
+    # pose de cada hipótese, pontuada com o catálogo inteiro
     best, seen = None, set()
     n_top = min(n_score, len(det))
     for hy in hyps:
@@ -296,64 +213,52 @@ def identify(det: pd.DataFrame, index: dict, img_shape, eps: float = 0.01,
             pose = P.refine_pose(pose, catalog.iloc[rows], det_xy[k], img_shape)
         except ValueError:
             continue
-        if not (1.0 < pose[3] < max_fov):     # FOV impossível para uma foto normal
+        if not (1.0 < pose[3] < max_fov):
             continue
         di, _ = P.match_catalog(pose, catalog, det_xy[:n_top], img_shape, tol_px,
                                 n_brightest=3 * n_top)
         score = len(di) / n_top
         if best is None or score > best[0]:
             best = (score, pose)
-        if score >= stop_score:     # já explica quase tudo: não vale a pena testar mais
+        if score >= stop_score:
             break
 
     if best is None or best[0] < min_score:
         return {}
 
-    # 4c: associação final e refinamento com todas as deteções
     score, pose = best
     return finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars)
 
 
 FINAL_SCHEDULES = {
-    # (multiplicador da tolerância, "bright" ou "all" no catálogo, nº de deteções ou None = todas)
+    # (x tolerância, catálogo, nº de deteções)
     "simples": ((1, "all", None), (1, "all", None)),
     "grosso_fino": ((4, "bright", 60), (2, "bright", 60), (1, "all", None), (1, "all", None)),
     "suave": ((2, "bright", None), (1, "all", None), (1, "all", None)),
-    # como "suave", mas na fase das brilhantes ajusta também a distorção radial k1
     "suave_k1": ((2, "bright_k1", None), (1, "all", None), (1, "all", None)),
-    # estrelas brilhantes do catálogo só com as 60 deteções mais brilhantes
-    # (evita que uma estrela fraca ao lado "roube" o par de uma brilhante), com k1
     "brilhantes_k1": ((3, "bright_k1", 60), (2, "bright_k1", 60), (1, "all", None), (1, "all", None)),
 }
 
 
 def finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars=4, fit_lens: bool = False,
              schedule: str = "suave", final_div: float = 1.0):
-    """Passo 4c: com uma pose já boa, associa todas as deteções ao catálogo,
-    refina a pose com todas elas e decide que constelações reportar."""
+    """Com uma pose boa: emparelha tudo, refina e escolhe as constelações a reportar."""
     import projection as P
     catalog = index["stars"]
-    # do grosso para o fino: se a pose inicial estiver uns 50 px ao lado, com a
-    # tolerância apertada as estrelas brilhantes não emparelham e o ajuste agarra-se
-    # a estrelas fracas por acaso. Primeiro só as brilhantes (catálogo E deteções)
-    # com tolerância larga; depois aperta-se e usa-se tudo.
+    # primeiro só as brilhantes com tolerância larga, depois tudo
     bright = catalog[catalog["mag"] <= 4.5]
     for mult, which, n_det in FINAL_SCHEDULES[schedule]:
         cat = bright if which.startswith("bright") else catalog
         di, ci = P.match_catalog(pose, cat, det_xy[:n_det], img_shape, mult * tol_px)
         if len(di) >= 3:
-            # fit_lens: ajusta também a lente (centro ótico e distorção). Desligado por
-            # defeito: nas fotos testadas os 3 parâmetros a mais seguiam emparelhamentos
-            # errados com estrelas fracas (overfitting) em vez de corrigir a lente.
+            # fit_lens desligado: fazia overfitting
             if which == "bright_k1" and len(di) >= 8:
                 ext = "k1"
             elif len(pose) == 7:
-                ext = "k1"            # mantém o k1 já estimado e continua a afiná-lo
+                ext = "k1"
             else:
                 ext = fit_lens and n_det is None and len(di) >= 20
             pose = P.refine_pose(pose, cat.iloc[ci], det_xy[di], img_shape, extended=ext)
-    # identificação final: tolerância completa (antes era metade, exigente demais
-    # para fotos editadas, onde a geometria não é exatamente a de uma câmara)
     di, ci = P.match_catalog(pose, catalog, det_xy, img_shape, tol_px / final_div)
 
     stars = pd.DataFrame({"det": di, "hip": catalog["hip"].fillna(-1).values[ci].astype(int),
@@ -371,25 +276,19 @@ def finalize(pose, score, det_xy, index, img_shape, tol_px, min_con_stars=4, fit
 
 
 def report_constellation(n_found: int, n_in_view: int, min_con_stars: int = 4) -> bool:
-    """Reportar uma constelação se tiver pelo menos min_con_stars estrelas identificadas,
-    ou, para constelações pequenas (o Cruzeiro do Sul tem 4 estrelas nas linhas),
-    pelo menos 3 que sejam >= 60% das suas estrelas visíveis na imagem."""
+    """>= 4 estrelas, ou >= 3 que sejam 60% das visíveis (para o Cruzeiro do Sul)."""
     return n_found >= min_con_stars or (n_found >= 3 and n_found >= 0.6 * n_in_view)
 
 
 def _truth_hips(det: pd.DataFrame, truth: pd.DataFrame, max_dist: float = 3.0) -> np.ndarray:
-    """Só para avaliar: que estrela HIP é cada deteção (a da verdade mais próxima, se a < max_dist px)."""
+    """HIP verdadeiro de cada deteção (só para avaliar)."""
     d, j = cKDTree(truth[["x", "y"]].values).query(det[["x", "y"]].values)
     hips = truth["hip"].values[j].astype(int)
     return np.where(d < max_dist, hips, -1)
 
 
 def evaluate_candidates(eps: float = 0.01, n_stars: int = 20):
-    """Corre os passos 2 e 3 em todas as imagens sintéticas e mede:
-      - quantos candidatos aparecem por imagem;
-      - quantos estão certos (os 3 HIPs coincidem, pela mesma ordem);
-      - em quantas imagens há pelo menos um candidato certo (sem isso, o passo 4 não tem hipótese).
-    """
+    """Quantos candidatos e quantos certos por imagem sintética."""
     import cv2
     from preprocessing import preprocess
     from detection import detect_stars
@@ -419,13 +318,7 @@ def evaluate_candidates(eps: float = 0.01, n_stars: int = 20):
 
 
 def evaluate_identification(min_con_stars: int = 4, identify_fn=None, index=None, **kw):
-    """Avalia o passo 4 nas imagens sintéticas.
-
-    "Presentes" = constelações cujas estrelas detetadas passam report_constellation
-    (o mesmo critério que identify usa para reportar).
-    Mede, por imagem: constelações encontradas certas (TP), inventadas (FP), falhadas (FN),
-    a percentagem de estrelas com o HIP certo e o erro da pose estimada.
-    """
+    """TP/FP/FN das constelações, estrelas certas e erro da pose nas sintéticas."""
     import time
     import cv2
     from detection import find_stars
@@ -477,26 +370,23 @@ if __name__ == "__main__":
     n = len(idx["desc"])
     print(f"{n} triângulos de {len(set(idx['con']))} constelações guardados em {TRIANGLES_NPZ.name}")
 
-    # Verificação 1: o descritor não muda com rotação, escala, translação nem espelho
+    # o descritor tem de dar igual nos três
     rng = np.random.default_rng(0)
     p = rng.random((3, 2))
     ang = 1.0
     R = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
-    q = 3.7 * p @ R.T + [5, -2]       # roda, aumenta 3.7x e desloca
-    m = p * [-1, 1]                    # espelho
+    q = 3.7 * p @ R.T + [5, -2]
+    m = p * [-1, 1]
     print("invariância:", triangle_descriptor(p)[0], triangle_descriptor(q)[0], triangle_descriptor(m)[0])
 
-    # Verificação 2: quão "únicos" são os triângulos? (distância ao vizinho mais próximo)
     tree = cKDTree(idx["desc"])
     d, _ = tree.query(idx["desc"], k=2)
     nn = d[:, 1]
     print(f"distância ao triângulo mais parecido: mediana {np.median(nn):.4f}, "
           f"{(nn < 0.01).mean():.0%} têm outro a menos de 0.01")
 
-    # Passos 2 e 3 nas imagens sintéticas
     print()
     evaluate_candidates(eps=0.01, n_stars=20)
 
-    # Passo 4 (pose da câmara + identificação) nas imagens sintéticas
     print()
     evaluate_identification()

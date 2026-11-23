@@ -1,25 +1,9 @@
 """
-Fase 3, versão 2: triângulos medidos na esfera celeste.
+Matching por triângulos medidos na esfera (a versão usada).
 
-Problema da versão 1 (matching.py): o descritor (b/a, c/a) era medido em píxeis.
-Uma câmara é uma projeção gnomónica, que estica as formas longe do centro:
-a θ graus do eixo, a direção radial estica 1/cos²θ e a tangencial só 1/cos θ.
-A 35° do centro, um triângulo fica ~22% deformado, e a tolerância era de 1%.
-Por isso falhava nas fotos de grande angular (por exemplo, todas as da Ursa Maior).
-
-Solução:
-  1. Catálogo: lados dos triângulos em ÂNGULOS no céu (não dependem da projeção).
-  2. Imagem: para um FOV suposto, cada píxel vira um raio 3-D e os lados também
-     viram ângulos, sem deformação. Como o FOV não se conhece, experimenta-se
-     uma série (8° a 100°).
-  3. Com o FOV suposto, o TAMANHO do triângulo (lado maior em graus) também tem
-     de bater certo, o que elimina a maioria dos falsos candidatos.
-  4. Com 3 pares estrela <-> raio, a rotação da câmara sai EXATA pelo algoritmo
-     de Kabsch (SVD 3x3). A verificação projeta o catálogo com o modelo de
-     câmara verdadeiro, sem a aproximação da semelhança no plano.
-
-Função principal: identify_sphere(det, index, img_shape), com a mesma saída de
-matching.identify. O índice vem de load_sphere_index().
+No plano os triângulos deformavam-se nas grandes angulares; aqui os lados são
+ângulos no céu. Para cada FOV suposto os píxeis viram raios 3-D, procuram-se
+triângulos com a mesma forma e tamanho e a rotação sai por Kabsch.
 """
 from itertools import combinations
 
@@ -32,7 +16,7 @@ import projection as P
 from catalog import CATALOG_DIR, load_stars, load_constellations
 
 SPHERE_NPZ = CATALOG_DIR / "triangles_sphere.npz"
-FOV_GUESSES = np.geomspace(8, 100, 20)          # passo de ~14% entre FOVs seguidos
+FOV_GUESSES = np.geomspace(8, 100, 20)          # ~14% entre cada
 
 
 def radec_to_vec(ra_deg, dec_deg) -> np.ndarray:
@@ -47,15 +31,10 @@ def vec_to_radec(v):
 
 
 def triangles_from_angles(A: np.ndarray, combos: np.ndarray):
-    """Descritores de muitos triângulos de uma vez.
-
-    A:      matriz (n, n) de distâncias angulares entre n estrelas
-    combos: (K, 3) índices das 3 estrelas de cada triângulo
-    Devolve desc (K, 2) = (b/a, c/a), a (K,) = lado maior em radianos,
-    e ids (K, 3) = vértices na ordem "oposto a a, b, c". Tira os triângulos instáveis.
-    """
+    """Descritor, lado maior e vértices ordenados de vários triângulos de uma vez.
+    A = matriz de ângulos entre estrelas."""
     i, j, k = combos.T
-    sides = np.column_stack([A[j, k], A[i, k], A[i, j]])     # lado oposto a cada vértice
+    sides = np.column_stack([A[j, k], A[i, k], A[i, j]])
     order = np.argsort(-sides, axis=1)
     s = np.take_along_axis(sides, order, axis=1)
     desc = s[:, 1:] / s[:, :1]
@@ -68,7 +47,7 @@ def angle_matrix(V: np.ndarray) -> np.ndarray:
 
 
 def build_sphere_index(max_stars: int = 10):
-    """Passo 1 (versão esfera): triângulos das estrelas mais brilhantes de cada constelação."""
+    """Triângulos (em ângulos) das estrelas mais brilhantes de cada constelação."""
     stars, consts = load_stars(), load_constellations()
     descs, sizes, hips, cons = [], [], [], []
     for abbr in consts:
@@ -85,8 +64,7 @@ def build_sphere_index(max_stars: int = 10):
 
 
 def load_sphere_index(bright_mag: float = 5.0) -> dict:
-    """Índice da versão 1 (precisamos dos planos e do catálogo para o passo final)
-    mais os triângulos esféricos e os vetores unitários de todas as estrelas."""
+    """Índice antigo + triângulos esféricos + vetores de todas as estrelas."""
     index = M.load_catalog_index()
     if not SPHERE_NPZ.exists():
         build_sphere_index()
@@ -102,12 +80,12 @@ def load_sphere_index(bright_mag: float = 5.0) -> dict:
     mag = stars["mag"].values
     index["s_maxmag"] = mag[index["s_rows"]].max(1)
     by_mag = np.argsort(mag)
-    index["bright_rows"] = by_mag[mag[by_mag] <= bright_mag]          # já ordenadas por brilho
+    index["bright_rows"] = by_mag[mag[by_mag] <= bright_mag]
     return index
 
 
 def focal(F_deg: float, w: int, lens: str = "rect") -> float:
-    """Distância focal em píxeis para um FOV (largura) e um tipo de lente."""
+    """Focal em píxeis para um FOV horizontal."""
     if lens == "fish":
         return (w / 2) / np.radians(F_deg / 2)          # r = f·θ
     return (w / 2) / np.tan(np.radians(F_deg) / 2)      # r = f·tan(θ)
@@ -120,8 +98,7 @@ def fov_from_focal(f: float, w: int, lens: str = "rect") -> float:
 
 
 def pixel_rays(xy: np.ndarray, f: float, w: int, h: int, lens: str = "rect") -> np.ndarray:
-    """Píxeis -> raios unitários no referencial da câmara (x direita, y baixo, z em frente).
-    lens="rect": lente normal (pinhole). lens="fish": olho-de-peixe equidistante (θ = r/f)."""
+    """Píxeis -> raios unitários da câmara (pinhole ou olho-de-peixe)."""
     u, v = xy[:, 0] - w / 2, xy[:, 1] - h / 2
     if lens == "fish":
         th, phi = np.hypot(u, v) / f, np.arctan2(v, u)
@@ -131,15 +108,14 @@ def pixel_rays(xy: np.ndarray, f: float, w: int, h: int, lens: str = "rect") -> 
 
 
 def kabsch(V: np.ndarray, D: np.ndarray) -> np.ndarray:
-    """Rotação R que melhor leva os vetores V (céu) aos D (câmara): D ≈ V @ R.T.
-    É o mesmo truque da SVD de fit_similarity, mas em 3-D e sem escala."""
+    """Rotação que leva V (céu) a D (câmara), D ≈ V @ R.T."""
     U, _, Vt = np.linalg.svd(V.T @ D)
     d = np.sign(np.linalg.det(Vt.T @ U.T))
     return Vt.T @ np.diag([1, 1, d]) @ U.T
 
 
 def project_rows(R, f, rows, vec, w, h, lens: str = "rect"):
-    """Projeta as estrelas `rows` com a câmara (R, f). Devolve xy e máscara de dentro da imagem."""
+    """Projeta as estrelas rows com (R, f)."""
     Pc = vec[rows] @ R.T
     z = Pc[:, 2]
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -156,8 +132,7 @@ def project_rows(R, f, rows, vec, w, h, lens: str = "rect"):
 
 
 def score_camera(R, f, index, top_xy, img_shape, tol_px, n_brightest, lens: str = "rect"):
-    """Fração das deteções mais brilhantes explicadas pelas n_brightest estrelas do
-    catálogo mais brilhantes dentro da imagem. Devolve (score, pares det -> linha do catálogo)."""
+    """Fração das deteções de topo que caem em cima de uma estrela brilhante do catálogo."""
     h, w = img_shape
     rows = index["bright_rows"]
     xy, inside = project_rows(R, f, rows, index["vec"], w, h, lens)
@@ -167,19 +142,14 @@ def score_camera(R, f, index, top_xy, img_shape, tol_px, n_brightest, lens: str 
     d, j = cKDTree(xy[sel]).query(top_xy)
     ok = d < tol_px
     pairs = {}
-    for di in np.where(ok)[0]:                   # cada estrela do catálogo só conta uma vez
+    for di in np.where(ok)[0]:                   # cada estrela só conta uma vez
         pairs.setdefault(int(j[di]), int(di))
     return len(pairs) / len(top_xy), [(di, int(rows[sel[k]])) for k, di in pairs.items()]
 
 
 def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps: int = 31,
                   lens: str = "rect"):
-    """Ajusta o FOV (via f) e a rotação às estrelas emparelhadas.
-
-    Com o FOV suposto da grelha (até ~13% errado), a rotação de Kabsch acerta
-    no triângulo mas desalinha as estrelas da borda. Aqui experimenta-se f em
-    ±span e fica o que deixa os pares mais alinhados (Kabsch com todos os pares).
-    """
+    """Afina f em ±15% e a rotação, porque o FOV da grelha é só aproximado."""
     h, w = img_shape
     di = np.array([p[0] for p in pairs]); V = index["vec"][[p[1] for p in pairs]]
     best = None
@@ -193,10 +163,9 @@ def refine_camera(pairs, det_xy, index, f, img_shape, span: float = 0.15, steps:
 
 
 def camera_to_pose(R, f, pairs, det_xy, index, img_shape, lens: str = "rect"):
-    """Converte (R, f) para (ra0, dec0, roll, fov) do modelo de projection.py e refina.
-    O roll procura-se numa grelha (é só 1 número), o resto sai diretamente de R e f."""
+    """(R, f) -> pose (ra0, dec0, roll, fov) de projection.py, e refina."""
     h, w = img_shape
-    ra0, dec0 = vec_to_radec(R.T @ np.array([0.0, 0.0, 1.0]))     # para onde aponta o eixo
+    ra0, dec0 = vec_to_radec(R.T @ np.array([0.0, 0.0, 1.0]))
     fov = fov_from_focal(f, w, lens)
     extra = [P.FISHEYE] if lens == "fish" else []
     di = np.array([p[0] for p in pairs]); rows = np.array([p[1] for p in pairs])
@@ -214,18 +183,17 @@ def identify_sphere(det: pd.DataFrame, index: dict, img_shape, n_stars: int = 20
                     coarse_mult: float = 3.0, coarse_min: float = 0.15,
                     weak_score: float = 0.3, ratio: float = 1.8, schedule: str = "suave",
                     lens: str = "rect"):
-    """Passos 2 a 4 com triângulos na esfera. Mesma saída que matching.identify.
-    lens: "rect" (lente normal) ou "fish" (olho-de-peixe), ver pixel_rays."""
+    """Identifica a pose e as constelações. Devolve {} se não houver solução."""
     h, w = img_shape
     det_xy = det[["x", "y"]].values
     n = min(n_stars, len(det))
     if n < 3:
         return {}
-    tol_px = tol_frac * max(h, w)          # lado maior: fotos ao alto não ficam com tolerância menor
+    tol_px = tol_frac * max(h, w)
     top_xy = det_xy[:min(n_score, len(det))]
     combos = np.array(list(combinations(range(n), 3)))
 
-    # 2 + 3: para cada FOV suposto, triângulos da imagem e candidatos (forma E tamanho)
+    # candidatos para cada FOV suposto (forma e tamanho)
     hyps, rays = [], {}
     for F in fov_guesses:
         f = focal(F, w, lens)
@@ -240,12 +208,10 @@ def identify_sphere(det: pd.DataFrame, index: dict, img_shape, n_stars: int = 20
             for j in js:
                 hyps.append((ids[i].max(), index["s_maxmag"][j], F, tuple(ids[i]), j))
 
-    # 4: as hipóteses de estrelas mais brilhantes primeiro; rotação por Kabsch.
-    #    O FOV da grelha é aproximado, por isso: contagem larga (filtro) ->
-    #    refinar FOV e rotação com os pares encontrados -> contagem final rigorosa.
+    # estrelas mais brilhantes primeiro; contagem larga -> afinar -> contagem final
     hyps.sort(key=lambda t: (t[0], t[1]))
     best = None
-    runner_up = 0.0           # melhor score de uma pose DIFERENTE da melhor (eixo a > 5°)
+    runner_up = 0.0           # melhor pose diferente (eixo a mais de 5°)
     nb = 3 * len(top_xy)
     for _, _, F, tri, j in hyps[:max_hyp]:
         f, D = rays[F]
@@ -268,10 +234,7 @@ def identify_sphere(det: pd.DataFrame, index: dict, img_shape, n_stars: int = 20
         if score >= stop_score:
             break
 
-    # Aceitação: score alto, OU (teste da razão, como o de Lowe no SIFT) um score
-    # mais fraco mas claramente melhor do que a melhor alternativa diferente.
-    # Com nuvens ou muitas estrelas tapadas, a pose certa pode ficar abaixo de
-    # min_score; uma pose errada nunca se destaca das outras coincidências.
+    # aceita se o score for alto ou se ganhar bem à 2.ª melhor (teste da razão)
     if best is None:
         return {}
     if best[0] < min_score and not (best[0] >= weak_score and best[0] >= ratio * max(runner_up, 1e-9)):

@@ -20,26 +20,12 @@ def preprocess(gray: np.ndarray, bg_ksize: int = 51, sigma: float = 1.0) -> np.n
 
 
 def tophat(gray: np.ndarray, r_frac: float = 0.004, sigma: float = 1.0):
-    """Alternativa a preprocess, melhor para fotos reais: top-hat morfológico.
-
-    top-hat = imagem - abertura(imagem, disco de raio r).
-    A abertura apaga tudo o que é menor que o disco (as estrelas) e mantém o que
-    é maior (paisagem, nuvens, Via Láctea, gradientes de luz). Subtraindo, sobra
-    só o que é pequeno: as estrelas. A mediana de 51 px de preprocess deixava
-    passar estruturas médias, como rochas e ramos.
-
-    r_frac: raio do disco em fração da largura (0.004 -> ~5 px em 1280, ~10 px em 2400),
-            para funcionar com qualquer resolução.
-    No fim subtrai-se a mediana: num céu com ruído, o top-hat é sempre >= 0
-    (é "píxel - mínimo local"), e sem isto o fundo inteiro ficava acima do limiar.
-
-    Devolve (imagem filtrada, r em píxeis).
-    """
+    """Top-hat com disco de raio r_frac * largura. Devolve (imagem, r)."""
     r = max(3, round(r_frac * gray.shape[1]))
     disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
     th = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, disk).astype(np.float32)
     th = cv2.GaussianBlur(th, (0, 0), sigma)
-    return th - np.median(th), r
+    return th - np.median(th), r          # o top-hat é sempre >= 0, centrar no zero
 
 def noise_level(img:np.ndarray)-> float:
      return float(1.4826 * np.median(np.abs(img - np.median(img))))

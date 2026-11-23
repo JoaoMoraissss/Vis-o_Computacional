@@ -1,48 +1,10 @@
 """
-Avaliação do pipeline em fotografias reais (e, opcionalmente, nas sintéticas).
+Avaliação nas fotos reais (e sintéticas com --synthetic).
 
-Uso (a partir da raiz do projeto):
-    python src/evaluate.py                 # conjunto de teste bloqueado (data/test3/)
-    python src/evaluate.py --set test2     # 2.º conjunto de teste (data/test2/)
-    python src/evaluate.py --set test      # 1.º conjunto de teste (data/test/)
-    python src/evaluate.py --set samples   # fotos usadas no desenvolvimento
-    python src/evaluate.py --set all       # as duas, com resumos separados
-    python src/evaluate.py --synthetic     # também as imagens sintéticas
-    python src/evaluate.py --mask 2 --out results/metrics/mascara_v2   # máscara do céu v2
+    python src/evaluate.py --set test3|test2|test|samples|all [--mask 2] [--out pasta]
 
-Porquê dois conjuntos?
-    data/samples/ foi usado para AFINAR o pipeline (limiares, multi-escala, teste da
-    razão, olho-de-peixe...). Os 15/15 aí medem o que o método consegue fazer, mas
-    estão otimistas: os parâmetros foram escolhidos a olhar para essas fotos.
-    data/test/ tem fotos nunca vistas durante o desenvolvimento. É o número honesto
-    (como o conjunto de teste em aprendizagem automática). Regra: não se mudam
-    parâmetros depois de olhar para os resultados do teste.
-    data/test/ foi depois usado para diagnosticar a máscara do céu e deixou de ser
-    limpo; data/test2/ foi juntado antes de avaliar a máscara nova, mas uma falha
-    nele levou a uma correção, por isso também deixou de ser limpo. data/test3/ foi
-    juntado depois dessa correção e antes de qualquer corrida: é o teste atual.
-
-Verdade de referência: labels.csv em cada pasta, com as constelações que a foto
-mostra (pelo título/descrição da fonte, confirmado a olho). Uma linha sem
-constelações é um CONTROLO NEGATIVO: o resultado certo é "sem solução".
-
-Veredicto por foto:
-    certo     resolveu e encontrou pelo menos uma das constelações esperadas
-    errado    resolveu, mas nenhuma das esperadas (pose errada = falso positivo)
-    falhou    não deu solução (falso negativo; menos grave do que "errado")
-    rejeitou  controlo negativo sem solução (é o certo)
-
-Métricas por foto quando há solução:
-    estrelas      deteções emparelhadas com uma estrela do catálogo
-    erro_px       mediana da distância (píxeis) entre cada estrela detetada e a
-                  posição prevista pela pose: mede se a câmara estimada é boa
-    det_recall    das estrelas do catálogo até mag 4.5 que a pose põe no céu da
-                  foto, que fração foi detetada (a menos de tol px)
-    det_prec30    das 30 deteções mais brilhantes (as que alimentam a fase 3),
-                  que fração é uma estrela real (até mag 6.5)
-    As duas últimas usam a pose como "verdade". Só fazem sentido quando o
-    veredicto é "certo", e são um pouco otimistas (a pose foi ajustada às
-    próprias deteções). Numa foto real não há outra verdade à mão.
+Cada pasta tem um labels.csv; linha sem constelações = controlo negativo.
+Veredictos: certo, errado, falhou, rejeitou. Métricas explicadas no relatório.
 """
 import argparse
 import time
@@ -71,7 +33,7 @@ def load_labels(folder: Path) -> dict:
 
 
 def solve_tracked(gray, index):
-    """Igual a main.solve, mas diz qual das tentativas resultou (0 = a primeira)."""
+    """main.solve, mas devolve também o número da tentativa."""
     det = None
     for i, kw in enumerate(ATTEMPTS):
         det = find_stars(gray, rank=kw["rank"])
@@ -82,12 +44,11 @@ def solve_tracked(gray, index):
 
 
 def pose_metrics(res, det, gray, index, tol_px):
-    """Erro da pose e qualidade da deteção, usando a pose encontrada como verdade."""
+    """erro_px, recall e precisão@30 (a pose faz de verdade)."""
     cat = index["stars"]
     h, w = gray.shape
     xy_cat, inside = P.project(cat, res["pose"], gray.shape)
 
-    # erro_px: estrelas identificadas vs onde a pose as põe
     st = res["stars"]
     row = pd.Series(np.arange(len(cat)), index=cat["hip"].fillna(-1).astype(int).values)
     row = row[~row.index.duplicated()]
@@ -151,7 +112,7 @@ def evaluate_folder(folder: Path, index, consts) -> pd.DataFrame:
 
 
 def to_markdown(df: pd.DataFrame) -> str:
-    """Tabela em Markdown (sem a dependência opcional tabulate do pandas)."""
+    """Para não depender do tabulate."""
     cells = [[str(v) for v in df.columns]] + [["" if pd.isna(v) else str(v) for v in r] for r in df.values]
     lines = ["| " + " | ".join(c) + " |" for c in cells]
     lines.insert(1, "|" + "---|" * len(df.columns))

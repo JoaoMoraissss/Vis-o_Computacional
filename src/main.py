@@ -1,15 +1,8 @@
 """
 Identificar constelações numa fotografia do céu.
 
-Uso (a partir da raiz do projeto):
-    python src/main.py foto.jpg [outra.jpg ...]     # guarda em results/demo/
-    python src/main.py --samples                    # todas as fotos de data/samples/
-    python src/main.py foto.jpg --out pasta/
-
-Pipeline:
-    fase 2  find_stars    top-hat + deteção + filtro de forma + máscara do céu
-    fase 3  identify_sphere  triângulos na esfera -> candidatos -> pose da câmara (Kabsch)
-    saída   draw_result   linhas e nomes das constelações por cima da foto
+    python src/main.py foto.jpg [outra.jpg ...] [--out pasta] [--mask 2]
+    python src/main.py --samples
 """
 import argparse
 import time
@@ -25,18 +18,13 @@ from segmentation import sky_mask
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Ordem de tentativas: cada uma ordena as deteções de forma diferente.
-#   flux: brilho total (bom em geral)
-#   clip: pico, com as estrelas quase saturadas empatadas (melhor quando há
-#         manchas grandes e difusas, ou halos, que inflacionam o brilho total)
-#   lens="fish": último recurso, lente olho-de-peixe / ultra grande angular
+# se uma falhar passa à seguinte; olho-de-peixe só no fim
 ATTEMPTS = ({"rank": "flux"}, {"rank": "clip"},
             {"rank": "flux", "lens": "fish"}, {"rank": "clip", "lens": "fish"})
 
 
 def solve(gray, index, attempts=ATTEMPTS):
-    """Fase 2 + fase 3 para uma imagem. Se uma tentativa falhar, passa à seguinte.
-    Devolve (resultado, deteções usadas); resultado vazio se nenhuma resultar."""
+    """Deteção + matching. Devolve (resultado, deteções); {} se nada resultar."""
     for kw in attempts:
         det = find_stars(gray, rank=kw["rank"])
         result = identify_sphere(det, index, gray.shape, lens=kw.get("lens", "rect"))
