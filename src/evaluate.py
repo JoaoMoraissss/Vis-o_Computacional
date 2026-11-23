@@ -1,7 +1,7 @@
 """
 Avaliação nas fotos reais (e sintéticas com --synthetic).
 
-    python src/evaluate.py --set test3|test2|test|samples|all [--mask 2] [--out pasta]
+    python src/evaluate.py --set test4|test3|test2|test|samples|all [--mask 2] [--out pasta]
 
 Cada pasta tem um labels.csv; linha sem constelações = controlo negativo.
 Veredictos: certo, errado, falhou, rejeitou. Métricas explicadas no relatório.
@@ -24,7 +24,7 @@ from segmentation import sky_mask
 
 ROOT = Path(__file__).resolve().parent.parent
 SETS = {"samples": ROOT / "data" / "samples", "test": ROOT / "data" / "test",
-        "test2": ROOT / "data" / "test2", "test3": ROOT / "data" / "test3"}
+        "test2": ROOT / "data" / "test2", "test3": ROOT / "data" / "test3", "test4": ROOT / "data" / "test4"}
 
 
 def load_labels(folder: Path) -> dict:
@@ -147,7 +147,7 @@ def summary(df: pd.DataFrame, title: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser(description="Avaliar o pipeline em fotografias reais.")
-    ap.add_argument("--set", choices=["test", "test2", "test3", "samples", "all"], default="test3")
+    ap.add_argument("--set", choices=["test", "test2", "test3", "test4", "samples", "all"], default="test4")
     ap.add_argument("--synthetic", action="store_true", help="avaliar também as imagens sintéticas")
     ap.add_argument("--mask", type=int, choices=[1, 2], default=1,
                     help="versão da máscara do céu (ver segmentation.py)")
@@ -162,7 +162,8 @@ def main():
     titles = {"samples": "Desenvolvimento (data/samples, usadas para afinar)",
               "test": "Teste 1 (data/test; usado para diagnosticar a máscara do céu)",
               "test2": "Teste 2 (data/test2; usado para corrigir a máscara do céu)",
-              "test3": "Teste 3 (data/test3, bloqueado: nunca visto)"}
+              "test3": "Teste 3 (data/test3)",
+              "test4": "Teste 4 (data/test4, bloqueado: nunca visto)"}
     report = ["# Resultados da avaliação", ""]
     for s in names:
         print(f"\n{titles[s]}")
