@@ -55,8 +55,11 @@ python src/main.py foto.jpg --out pasta/      # outra pasta de saída
 python src/main.py foto.jpg --mask 2          # versão 2 da máscara do céu
 
 # avaliar com as etiquetas de referência (tabelas em results/metrics/)
-python src/evaluate.py                        # conjunto de teste bloqueado (data/test3/)
-python src/evaluate.py --set samples          # test, test2, test3, samples ou all
+python src/evaluate.py                        # conjunto de teste bloqueado (data/test4/)
+python src/evaluate.py --set samples          # test, test2, test3, test4, samples ou all
+
+# treinar e validar o classificador estrela/artefacto (grava data/catalog/star_classifier.json)
+python src/star_classifier.py
 python src/evaluate.py --synthetic            # também as imagens sintéticas
 
 # gerar as 20 imagens sintéticas (data/synthetic/) e as figuras da fase 1
@@ -76,6 +79,7 @@ src/
   preprocessing.py     top-hat e estimativa do ruído
   segmentation.py      máscara céu / paisagem (versões 1 e 2)
   detection.py         deteção de estrelas e filtro de forma
+  star_classifier.py   classificador estrela/artefacto (regressão logística)
   matching.py          triângulos no plano (versão 1) e avaliação nas sintéticas
   matching_sphere.py   triângulos na esfera e pose da câmara (versão usada)
   projection.py        modelo de câmara e projeção do catálogo
@@ -85,10 +89,10 @@ src/
 data/
   catalog/             estrelas (mag <= 6,5) e linhas das constelações
   samples/             15 fotos usadas para afinar o método
-  test/, test2/, test3/  conjuntos de teste (ver abaixo)
+  test/ ... test4/     conjuntos de teste (ver abaixo)
   proprias/            fotos tiradas por nós com o telemóvel
 results/
-  metrics/             tabelas da avaliação (máscara v1; mascara_v2/ para a v2)
+  metrics/             tabelas da avaliação da versão final (v1_antes_melhorias/ e mascara_v2/ para comparar)
   fotos_proprias/      resultados nas nossas fotos
 report/                relatório em LaTeX (relatorio.tex) e figuras
 presentation/          apresentação
@@ -103,24 +107,28 @@ controlo negativo (o resultado certo é "sem solução").
 
 Separámos as fotos usadas para afinar o método das fotos de teste. `data/test/` e
 `data/test2/` deixaram de ser limpos porque foram usados para diagnosticar e corrigir a
-máscara do céu; `data/test3/` foi juntado depois disso e é o teste atual. A regra é não
-mudar parâmetros depois de ver os resultados do teste.
+máscara do céu; `data/test3/` foi o teste bloqueado da máscara v2 e depois serviu para
+desenvolver o classificador. `data/test4/` foi juntado antes das últimas alterações e corrido
+uma vez com cada versão (a anterior está na tag `v1-antes-test4`). A regra é não mudar
+parâmetros depois de ver os resultados do teste.
 
-## Resultados (máscara v1)
+## Resultados (versão final, máscara v1)
 
 | Conjunto | Fotos | Certas | Erradas | Sem solução | Controlos negativos |
 |---|---|---|---|---|---|
 | `samples` (afinação) | 15 | 15 | 0 | 0 | — |
 | `test` | 11 | 8 | 0 | 3 | 1/1 rejeitado |
 | `test2` | 8 | 7 | 0 | 1 | 1/1 rejeitado |
-| `test3` (bloqueado) | 7 | 3 | 1 | 3 | — |
+| `test3` | 7 | 4 | 1 | 2 | — |
+| `test4` (bloqueado) | 13 | 9 | 0 | 4 | — |
 
-Nas 20 imagens sintéticas todas as constelações são encontradas, com 98,6 % das estrelas
-bem identificadas. Nas fotos certas o erro mediano da pose é de 2 a 4 píxeis, e cada foto
-demora entre 5 e 15 s. Tabelas completas em `results/metrics/resultados.md`.
+No `test4` a versão anterior às últimas melhorias tinha 8/13 (também sem erradas). Nas 20
+imagens sintéticas todas as constelações são encontradas, com 98,6 % das estrelas bem
+identificadas. Nas fotos certas o erro mediano da pose é de 2 a 4 píxeis, e cada foto
+demora entre 5 e 20 s. Tabelas por foto em `results/metrics/`.
 
 Nas nossas fotos (`data/proprias/`), Órion foi identificado nas duas fotos nítidas; a foto
-tremida só foi resolvida depois de reduzida a 25 % (explicação em
+tremida é resolvida pela tentativa automática com a imagem reduzida (explicação em
 `data/proprias/explicacao_como_nao_se_engana.txt`).
 
 ## Limitações

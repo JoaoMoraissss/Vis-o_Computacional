@@ -1,0 +1,14 @@
+foto,esperadas,encontradas,veredicto,tentativa,estrelas,score,seg,fov,erro_px,det_recall,det_prec30
+ori_16.jpg,Ori,-,falhou,-,0,0.0,28.8,,,,
+ori_17_tau.jpg,"Ori,Tau",Ori,certo,2,49,0.47,8.7,66.5,8.5,0.4,0.47
+uma_11.jpg,UMa,"Boo,Cep,Dra,UMa,UMi",certo,3,57,0.5,13.5,81.8,3.6,0.78,0.53
+uma_12_geiser.jpg,UMa,UMa,certo,1,128,0.5,4.3,55.9,2.1,1.0,0.9
+cas_06_aurora.jpg,Cas,-,falhou,-,0,0.0,23.3,,,,
+cas_07.jpg,Cas,Cas,certo,1,37,0.4,4.4,12.1,1.2,0.75,1.0
+sco_04_hubble.jpg,Sco,Sco,certo,1,242,0.83,5.0,34.9,1.2,1.0,0.9
+sco_05_eso.jpg,Sco,"Sco,Sgr",certo,1,166,0.63,4.7,26.1,2.9,1.0,0.87
+cru_07_nz.jpg,Cru,-,falhou,-,0,0.0,17.3,,,,
+cru_08_eso.jpg,Cru,-,falhou,-,0,0.0,24.8,,,,
+cyg_01.jpg,Cyg,-,falhou,-,0,0.0,13.5,,,,
+cyg_02_noirlab.jpg,Cyg,"Cyg,Lyr",certo,1,368,0.37,4.3,50.0,8.8,0.65,0.43
+sgr_01_aql.jpg,"Aql,Sgr","Aql,Sct,Ser,Sge,Sgr",certo,1,266,0.53,8.2,41.8,5.6,0.61,0.7

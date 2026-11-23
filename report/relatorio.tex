@@ -57,9 +57,13 @@ estimar a pose da câmara. Nas 20 imagens sintéticas e nas 15 fotografias de
 desenvolvimento acerta em todas. Em 26 fotografias de teste que nunca tinha
 visto resolve 18 (69\%), dá uma resposta discutível e rejeita os dois
 controlos negativos. Também resolve as fotografias que tirámos com um
-telemóvel; a única tremida só depois de reduzida à mão. Descrevemos ainda uma
-alteração à segmentação que parecia melhorar os resultados no conjunto onde a
-desenhámos, mas que não se confirmou num conjunto de teste guardado à parte.
+telemóvel, incluindo uma tremida. No fim juntámos um classificador
+estrela/artefacto aprendido a partir das próprias soluções do sistema; num
+quarto conjunto de teste, bloqueado antes de mexermos no código, passou de 8
+para 9 fotografias certas em 13, sem nenhuma resposta errada. Descrevemos
+ainda uma alteração à segmentação que parecia melhorar os resultados no
+conjunto onde a desenhámos, mas que não se confirmou num conjunto de teste
+guardado à parte.
 \end{abstract}
 
 % ---------------------------------------------------------------------
@@ -134,6 +138,8 @@ Tabela~\ref{tab:materia} relaciona cada parte com a matéria da cadeira.
       abertura e top-hat \\
     TP6 Reconhecimento de padrões & descritor invariante dos triângulos,
       vizinho mais próximo numa árvore k-d, teste da razão \\
+    TP7 Classificadores estatísticos & regressão logística estrela/artefacto,
+      validação deixando uma fotografia de fora \\
     TP8 Segmentação & limiar adaptado ao ruído, componentes ligados,
       segmentação céu/paisagem por textura; verificação de hipóteses ao estilo
       RANSAC \\
@@ -178,7 +184,7 @@ Seguindo a sugestão do docente, usámos fotografias de terceiros, todas do
 Wikimedia Commons e com licença livre (CC0, CC BY, CC BY-SA ou domínio
 público). O autor, a licença e a ligação de cada uma estão nos ficheiros
 \texttt{FONTES.md} de cada pasta. Reduzimo-las a 2\,400 píxeis no lado maior e
-dividimo-las em quatro conjuntos (Tabela~\ref{tab:conjuntos}).
+dividimo-las em cinco conjuntos (Tabela~\ref{tab:conjuntos}).
 
 \begin{table}[H]
   \centering
@@ -191,7 +197,8 @@ dividimo-las em quatro conjuntos (Tabela~\ref{tab:conjuntos}).
     Desenvolvimento & \texttt{data/samples} & 15 (0) & afinar o método \\
     Teste 1 & \texttt{data/test}  & 12 (1) & teste; depois usado para diagnosticar a máscara do céu \\
     Teste 2 & \texttt{data/test2} & 9 (1)  & teste; depois usado para corrigir a máscara v2 \\
-    Teste 3 & \texttt{data/test3} & 7 (0)  & teste bloqueado (comparação final) \\
+    Teste 3 & \texttt{data/test3} & 7 (0)  & teste bloqueado da máscara v2; depois usado no classificador \\
+    Teste 4 & \texttt{data/test4} & 13 (0) & teste bloqueado das melhorias finais (Secção~\ref{sec:teste4}) \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -425,8 +432,44 @@ próxima, só em pares mútuos. Uma constelação é reportada se tiver pelo men
 Sul, bastam 3, desde que sejam pelo menos 60\% das suas estrelas visíveis.
 
 Se nenhuma pose for aceite, o sistema tenta outra vez com outra ordenação das
-deteções (pelo pico, com as estrelas quase saturadas empatadas, o que ajuda
-quando há manchas difusas grandes) e, por fim, com o modelo olho-de-peixe.
+deteções: pelo pico, com as estrelas quase saturadas empatadas, o que ajuda
+quando há manchas difusas grandes; depois com as deteções que o classificador
+da Secção~\ref{sec:classificador} acha que são estrelas à frente das outras;
+e, por fim, com o modelo olho-de-peixe. Se mesmo assim falhar e houver mais
+de 1\,500 deteções, o que costuma querer dizer uma fotografia tremida, repete
+tudo com a imagem reduzida a 50\% e a 25\%.
+
+\subsection{Classificador estrela / artefacto}
+\label{sec:classificador}
+
+Muitas falhas vêm de as 20 deteções ``mais brilhantes'' não serem as 20
+estrelas mais brilhantes: candeeiros, ramos, nós de nebulosa. Para isso
+treinámos um classificador que, para cada uma das 60 deteções mais
+brilhantes, estima a probabilidade de ser uma estrela. O que torna isto
+possível sem etiquetar nada à mão é que o próprio sistema dá as etiquetas:
+numa fotografia resolvida, a pose diz que deteções caem a menos da
+tolerância de uma estrela do catálogo (estrela) e quais não (artefacto).
+Das 33 fotografias resolvidas dos conjuntos que já não eram limpos tirámos
+1\,969 deteções, 74\% delas estrelas. O conjunto de teste 4 não entrou.
+
+Cada deteção é descrita por nove características: fluxo, pico, área,
+alongamento, escala do top-hat, concentração (pico vezes área sobre fluxo),
+nível e textura do fundo à volta e altura na imagem. Ao início usámos os
+valores absolutos e a validação dava uma AUC de 0,53, ou seja, ao acaso: o
+brilho de uma estrela numa fotografia não tem nada a ver com o de outra.
+Passámos a usar a \emph{posição relativa} de cada valor dentro da própria
+fotografia (0 para o menor, 1 para o maior), e corrigimos as etiquetas, que
+no início só contavam os pares finais e marcavam como artefacto estrelas
+verdadeiras em campos densos. O classificador é uma regressão logística com
+regularização L2 e classes equilibradas, escrita em numpy
+(\texttt{src/star\_classifier.py}).
+
+Validámos deixando uma fotografia de fora de cada vez: AUC de 0,67,
+precisão de 83\% e \emph{recall} de 68\% para a classe estrela. Não é um
+classificador forte, e por isso não o usamos para deitar deteções fora, só
+para as reordenar numa tentativa extra. Os pesos fazem sentido: um pico alto
+e um fundo mais claro (céu, não chão escuro) puxam para estrela; uma área
+grande e um fundo com textura (ramos, nebulosas) puxam para artefacto.
 
 As linhas das constelações são desenhadas a partir do catálogo projetado, não
 das deteções, e por isso uma estrela escondida atrás de uma árvore continua a
@@ -499,8 +542,9 @@ certa mas não dizem quase nada sobre fotografias reais.
 
 \subsection{Fotografias reais}
 
-A Tabela~\ref{tab:reais} tem os resultados com a máscara do céu v1, a que o
-sistema usa por omissão.
+A Tabela~\ref{tab:reais} tem os resultados do primeiro contacto com cada
+conjunto, com a máscara do céu v1 (a que o sistema usa por omissão) e antes
+das melhorias finais da Secção~\ref{sec:teste4}.
 
 \begin{table}[H]
   \centering
@@ -608,9 +652,10 @@ risco volta a caber em um ou dois píxeis e a fotografia é resolvida com
 pontuação 0,97 (Perseu, Andrómeda, Cassiopeia, Carneiro e Touro, com as
 Plêiades). A 50\% obtém-se a mesma pose, o que confirma o resultado. Como a
 pose não depende da resolução, desenhámo-la sobre a fotografia original
-(Figura~\ref{fig:tremida}c). Por agora esta redução é feita à mão; faria
-sentido acrescentá-la como mais uma tentativa em \texttt{main.solve} quando
-há deteções a mais.
+(Figura~\ref{fig:tremida}c). Esta redução começou por ser feita à mão e
+passou depois a ser uma tentativa automática do sistema
+(Secção~\ref{sec:teste4}), que resolve a fotografia sozinho, logo à
+primeira redução (50\%, pontuação 0,83, a mesma pose).
 
 \begin{figure}[H]
   \centering
@@ -714,6 +759,7 @@ foram feitas à medida daquelas fotografias, e por isso nelas funcionam
 sempre.
 
 \subsection{Análise das falhas do teste 3}
+\label{sec:falhas3}
 
 Para perceber as três fotografias do teste 3 que ficaram sem solução com as
 duas máscaras, fizemos algumas experiências de diagnóstico, sem alterar o
@@ -747,13 +793,67 @@ simplesmente fora do âmbito do sistema.
   \label{fig:carina}
 \end{figure}
 
+\subsection{Melhorias finais e teste 4}
+\label{sec:teste4}
+
+Depois do diagnóstico das falhas do teste 3 tínhamos quatro ideias: aceitar
+deteções da escala maior do top-hat só junto de um pico forte (para Carina),
+alargar a grelha de campos de visão até 150° (para o Atacama), o
+classificador da Secção~\ref{sec:classificador} e a tentativa com a imagem
+reduzida (para fotografias tremidas). Como os testes 1 a 3 já tinham sido
+usados para tomar decisões, antes de mexer no código juntámos um quarto
+conjunto, com uma regra de seleção fixada à partida para não escolhermos só
+fotografias fáceis: em oito pesquisas no Wikimedia Commons ficaram as duas
+primeiras fotografias reais, com a constelação no título, sem anotações e de
+séries ainda não usadas. Ficaram 13 fotografias de oito constelações. Corremos
+a versão antiga nelas logo nesse momento, sem olhar para o resultado.
+
+Desenvolvemos as quatro ideias só com os conjuntos antigos. Duas delas
+pioravam fotografias que estavam certas: o filtro da escala maior estragava
+duas fotografias e a grelha até 150° estragava outra, sem resolver o Atacama.
+Ficaram de fora. As outras duas não estragaram nada e resolveram Carina e a
+fotografia tremida. Fechámos esta versão num \emph{commit} e só então a
+corremos, uma única vez, no teste 4 (Tabela~\ref{tab:teste4}).
+
+\begin{table}[H]
+  \centering
+  \caption{Antes e depois das melhorias finais (fotografias certas). Os testes
+  1 a 3 já não eram limpos; o teste 4 foi corrido uma vez com cada versão.}
+  \label{tab:teste4}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Conjunto & Antes & Depois \\
+    \midrule
+    Desenvolvimento & 15/15 & 15/15 \\
+    Testes 1 a 3 & 18/26 & 19/26 \\
+    Fotografias próprias & 2/3 & 3/3 \\
+    Controlos negativos rejeitados & 2/2 & 2/2 \\
+    \midrule
+    \textbf{Teste 4 (bloqueado)} & \textbf{8/13} & \textbf{9/13} \\
+    \quad respostas erradas & 0 & 0 \\
+    \quad erro mediano da pose & 3,2\,px & 3,6\,px \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+No teste 4 a nova versão resolveu mais uma fotografia (o Cruzeiro do Sul por
+trás de uma cúpula de observatório, pela tentativa do classificador), não
+perdeu nenhuma e continuou sem respostas erradas. Com 13 fotografias, uma de
+diferença está dentro do ruído, por isso não dizemos que o sistema melhorou
+sete pontos percentuais; dizemos que as duas alterações não estragaram nada
+num conjunto limpo e resolveram os casos para que foram pensadas. As quatro
+fotografias que continuam sem solução são uma Via Láctea muito densa, uma
+aurora forte, um céu azulado do crepúsculo e um campo estreito a preto e
+branco cheio de nebulosas.
+
 % ---------------------------------------------------------------------
 \section{Discussão e limitações}
 
 O ponto mais fraco é a generalização. Nas fotografias novas o sistema fica
-claramente abaixo do que faz nas de desenvolvimento: 69\% no total dos
-testes, e só 3/7 no último. Os conjuntos de teste são pequenos, por isso
-estas percentagens têm uma incerteza grande.
+claramente abaixo do que faz nas de desenvolvimento: 69\% no primeiro
+contacto com os testes 1 a 3 e também 69\% no teste 4. Os conjuntos de teste
+são pequenos, por isso estas percentagens têm uma incerteza grande. O que se
+mantém em todos é que o sistema quase nunca dá uma resposta errada.
 
 Boa parte das falhas vem de um pressuposto do método: que as estrelas mais
 brilhantes da imagem estão entre as mais brilhantes do catálogo. Isto deixa
@@ -771,8 +871,11 @@ desenvolvimento parecem editadas, e nelas a sobreposição tem desvios
 visíveis. Experimentámos um modelo com distorção radial extra, mas com
 poucos pares fazia \emph{overfitting}. Exposições longas sem seguimento, com
 as estrelas em riscos, também não são tratadas. Riscos curtos, como os da
-fotografia tremida, resolvem-se reduzindo a imagem, mas por enquanto isso é
-feito à mão.
+fotografia tremida, resolvem-se reduzindo a imagem.
+
+O classificador estrela/artefacto é fraco (AUC de 0,67) e foi treinado com
+as etiquetas que o próprio sistema produz, por isso só aprende com as
+fotografias que o sistema já sabia resolver.
 
 Há ainda duas ressalvas sobre a avaliação. As métricas de deteção nas
 fotografias reais usam a própria pose como verdade e por isso são otimistas.
@@ -787,27 +890,27 @@ identifica estrelas e constelações numa fotografia sem informação prévia e
 estima a pose da câmara com um erro de poucos píxeis. A decisão que mais
 pesou foi passar a medir os triângulos na esfera celeste em vez de no plano
 da imagem; foi isso que fez o método funcionar com grandes angulares. O
-sistema é conservador: nas 26 fotografias de teste deu 19 respostas, 18
-delas certas, e rejeitou os dois controlos negativos. Funcionou também nas
+sistema é conservador: nas 26 fotografias dos três primeiros testes deu 19
+respostas, 18 delas certas, rejeitou os dois controlos negativos, e no
+quarto teste não deu nenhuma resposta errada. Funcionou também nas
 fotografias que tirámos com o telemóvel, com casas iluminadas no
 enquadramento.
 
-Os três conjuntos de teste mostraram que o desempenho em fotografias novas é
-bastante pior do que nas de desenvolvimento, e que a melhoria que a máscara
-v2 parecia trazer não se confirmou no conjunto bloqueado.
+Os conjuntos de teste mostraram que o desempenho em fotografias novas é
+bastante pior do que nas de desenvolvimento, que a melhoria que a máscara v2
+parecia trazer não se confirmou no conjunto bloqueado e que, de quatro ideias
+para corrigir as falhas, só duas sobreviveram aos dados.
 
 Se continuássemos o trabalho, faríamos por esta ordem (do mais barato e útil
 para o mais trabalhoso):
 \begin{enumerate}
-  \item aceitar deteções da escala maior do top-hat só quando têm um pico
-        alto, o que resolve o caso de Carina;
-  \item alargar a grelha de campos de visão até cerca de 150°;
-  \item acrescentar uma tentativa com a imagem reduzida quando há deteções a
-        mais (fotografias tremidas);
+  \item um classificador mais forte, com características da vizinhança de
+        cada deteção (uma pequena rede convolucional treinada com as mesmas
+        etiquetas automáticas, incluindo as imagens sintéticas);
   \item trocar as regras da máscara do céu por um classificador aprendido
-        (céu / não-céu por blocos), ou classificar cada deteção como estrela
-        ou artefacto com uma pequena rede convolucional treinada nas imagens
-        sintéticas;
+        (céu / não-céu por blocos);
+  \item tratar a escala maior do top-hat de outra forma, já que o filtro que
+        experimentámos resolvia Carina mas estragava outras fotografias;
   \item juntar um conjunto de teste maior, e bloqueado, para medir estas
         alterações com menos incerteza.
 \end{enumerate}
@@ -820,9 +923,12 @@ O código está em \url{https://github.com/JoaoMoraissss/Vis-o_Computacional}.
         constelações (\texttt{--samples} corre todas as fotografias de
         desenvolvimento, \texttt{--mask 2} usa a máscara v2 e
         \texttt{data/proprias/*.jpg} corre as fotografias próprias);
-  \item \texttt{python src/evaluate.py --set all} reproduz as Tabelas
-        \ref{tab:reais} e \ref{tab:mascara} (\texttt{--synthetic} para as
-        sintéticas).
+  \item \texttt{python src/evaluate.py --set test4} reproduz o teste 4
+        (\texttt{--set all} corre todos os conjuntos, \texttt{--synthetic}
+        as sintéticas); a versão anterior às melhorias está na
+        \emph{tag} \texttt{v1-antes-test4} do repositório;
+  \item \texttt{python src/star\_classifier.py} volta a treinar e a validar
+        o classificador.
 \end{itemize}
 
 % TODO: secção com a contribuição de cada um, se a cadeira pedir.
