@@ -46,7 +46,7 @@ def detect_stars(img: np.ndarray, k: float = 5.0, min_area: int = 3,
 
 
 def find_stars(gray: np.ndarray, r_frac: float = 0.004, use_sky_mask: bool = True,
-               scales=(1, 2, 4), rank: str = "flux") -> pd.DataFrame:
+               scales=(1, 2, 4), rank: str = "flux", big_peak: bool = False) -> pd.DataFrame:
     """top-hat em 3 escalas -> deteção -> tirar repetidas -> só o que está no céu."""
     from scipy.spatial import cKDTree
     from preprocessing import tophat
@@ -58,6 +58,16 @@ def find_stars(gray: np.ndarray, r_frac: float = 0.004, use_sky_mask: bool = Tru
         d = detect_stars(img, max_area=2 * np.pi * r * r)
         d["r"] = r
         parts.append(d)
+    if big_peak and len(scales) > 1 and len(parts[0]) >= 20 and len(parts[-1]):
+        # desligado por omissão: resolvia Carina mas estragava duas fotos de desenvolvimento
+        # na escala maior só ficam halos de estrelas brilhantes: tem de haver ali perto
+        # uma deteção da escala menor com um pico ao nível das 20 mais brilhantes
+        # (senão são nós de nebulosa ou enxames, que somam fluxo numa área grande)
+        small, big = parts[0], parts[-1]
+        p20 = np.sort(small["peak"].values)[-20]
+        strong = small[small["peak"] >= p20][["x", "y"]].values
+        d, _ = cKDTree(strong).query(big[["x", "y"]].values)
+        parts[-1] = big[d <= big["r"].values]
     det = pd.concat(parts, ignore_index=True).sort_values("flux", ascending=False)
     det = det.reset_index(drop=True)
 
@@ -83,4 +93,11 @@ def find_stars(gray: np.ndarray, r_frac: float = 0.004, use_sky_mask: bool = Tru
     elif rank == "clip":
         cap = 0.8 * det["peak"].max() if len(det) else 0
         det = det.assign(_k=det["peak"].clip(upper=cap)).sort_values(["_k", "flux"], ascending=False).drop(columns="_k")
+    elif rank == "clf" and len(det):
+        # as que o classificador acha que são estrelas primeiro, cada grupo por fluxo
+        from star_classifier import LogReg, features
+        top = det.iloc[:60]
+        p = LogReg.load().predict_proba(features(top, gray))
+        k = np.r_[(p >= 0.5).astype(int), np.zeros(len(det) - len(top), int)]
+        det = det.assign(_k=k).sort_values(["_k", "flux"], ascending=False, kind="stable").drop(columns="_k")
     return det.reset_index(drop=True)

@@ -18,7 +18,7 @@ from scipy.spatial import cKDTree
 import projection as P
 from catalog import load_constellations
 from detection import find_stars
-from main import ATTEMPTS
+from main import solve
 from matching_sphere import load_sphere_index, identify_sphere
 from segmentation import sky_mask
 
@@ -33,14 +33,7 @@ def load_labels(folder: Path) -> dict:
 
 
 def solve_tracked(gray, index):
-    """main.solve, mas devolve também o número da tentativa."""
-    det = None
-    for i, kw in enumerate(ATTEMPTS):
-        det = find_stars(gray, rank=kw["rank"])
-        res = identify_sphere(det, index, gray.shape, lens=kw.get("lens", "rect"))
-        if res:
-            return res, det, i
-    return {}, det, None
+    return solve(gray, index)
 
 
 def pose_metrics(res, det, gray, index, tol_px):

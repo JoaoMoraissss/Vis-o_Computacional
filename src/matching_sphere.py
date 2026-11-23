@@ -16,7 +16,7 @@ import projection as P
 from catalog import CATALOG_DIR, load_stars, load_constellations
 
 SPHERE_NPZ = CATALOG_DIR / "triangles_sphere.npz"
-FOV_GUESSES = np.geomspace(8, 100, 20)          # ~14% entre cada
+FOV_GUESSES = np.geomspace(8, 100, 20)          # ~14% entre cada (até 150° estragava uma foto de desenvolvimento)
 
 
 def radec_to_vec(ra_deg, dec_deg) -> np.ndarray:

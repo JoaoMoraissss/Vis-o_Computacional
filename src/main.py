@@ -19,18 +19,31 @@ from segmentation import sky_mask
 ROOT = Path(__file__).resolve().parent.parent
 
 # se uma falhar passa à seguinte; olho-de-peixe só no fim
-ATTEMPTS = ({"rank": "flux"}, {"rank": "clip"},
+ATTEMPTS = ({"rank": "flux"}, {"rank": "clip"}, {"rank": "clf"},
             {"rank": "flux", "lens": "fish"}, {"rank": "clip", "lens": "fish"})
+MANY_DET = 1500         # mais do que isto costuma ser uma foto tremida (estrelas partidas em riscos)
 
 
 def solve(gray, index, attempts=ATTEMPTS):
-    """Deteção + matching. Devolve (resultado, deteções); {} se nada resultar."""
-    for kw in attempts:
+    """Deteção + matching. Devolve (resultado, deteções, nº da tentativa); {} se nada resultar.
+    Se falhar com deteções a mais, tenta outra vez com a imagem reduzida a 50% e 25%."""
+    det = None
+    for i, kw in enumerate(attempts):
         det = find_stars(gray, rank=kw["rank"])
         result = identify_sphere(det, index, gray.shape, lens=kw.get("lens", "rect"))
         if result:
-            return result, det
-    return {}, det
+            return result, det, i
+    if len(det) > MANY_DET:
+        for k, f in enumerate((0.5, 0.25)):
+            small = cv2.resize(gray, None, fx=f, fy=f, interpolation=cv2.INTER_AREA)
+            for kw in attempts[:2]:
+                d = find_stars(small, rank=kw["rank"])
+                result = identify_sphere(d, index, small.shape, lens=kw.get("lens", "rect"))
+                if result:      # a pose não depende da resolução; só as posições mudam
+                    result["stars"][["x", "y"]] /= f
+                    d[["x", "y"]] /= f
+                    return result, d, len(attempts) + k
+    return {}, det, None
 
 
 def run(path: Path, out_dir: Path, index, stars, consts) -> dict:
@@ -41,7 +54,7 @@ def run(path: Path, out_dir: Path, index, stars, consts) -> dict:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     t0 = time.perf_counter()
-    result, det = solve(gray, index)
+    result, det, _ = solve(gray, index)
     dt = time.perf_counter() - t0
 
     if result:
