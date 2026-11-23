@@ -439,38 +439,6 @@ e, por fim, com o modelo olho-de-peixe. Se mesmo assim falhar e houver mais
 de 1\,500 deteções, o que costuma querer dizer uma fotografia tremida, repete
 tudo com a imagem reduzida a 50\% e a 25\%.
 
-\subsection{Classificador estrela / artefacto}
-\label{sec:classificador}
-
-Muitas falhas vêm de as 20 deteções ``mais brilhantes'' não serem as 20
-estrelas mais brilhantes: candeeiros, ramos, nós de nebulosa. Para isso
-treinámos um classificador que, para cada uma das 60 deteções mais
-brilhantes, estima a probabilidade de ser uma estrela. O que torna isto
-possível sem etiquetar nada à mão é que o próprio sistema dá as etiquetas:
-numa fotografia resolvida, a pose diz que deteções caem a menos da
-tolerância de uma estrela do catálogo (estrela) e quais não (artefacto).
-Das 33 fotografias resolvidas dos conjuntos que já não eram limpos tirámos
-1\,969 deteções, 74\% delas estrelas. O conjunto de teste 4 não entrou.
-
-Cada deteção é descrita por nove características: fluxo, pico, área,
-alongamento, escala do top-hat, concentração (pico vezes área sobre fluxo),
-nível e textura do fundo à volta e altura na imagem. Ao início usámos os
-valores absolutos e a validação dava uma AUC de 0,53, ou seja, ao acaso: o
-brilho de uma estrela numa fotografia não tem nada a ver com o de outra.
-Passámos a usar a \emph{posição relativa} de cada valor dentro da própria
-fotografia (0 para o menor, 1 para o maior), e corrigimos as etiquetas, que
-no início só contavam os pares finais e marcavam como artefacto estrelas
-verdadeiras em campos densos. O classificador é uma regressão logística com
-regularização L2 e classes equilibradas, escrita em numpy
-(\texttt{src/star\_classifier.py}).
-
-Validámos deixando uma fotografia de fora de cada vez: AUC de 0,67,
-precisão de 83\% e \emph{recall} de 68\% para a classe estrela. Não é um
-classificador forte, e por isso não o usamos para deitar deteções fora, só
-para as reordenar numa tentativa extra. Os pesos fazem sentido: um pico alto
-e um fundo mais claro (céu, não chão escuro) puxam para estrela; uma área
-grande e um fundo com textura (ramos, nebulosas) puxam para artefacto.
-
 As linhas das constelações são desenhadas a partir do catálogo projetado, não
 das deteções, e por isso uma estrela escondida atrás de uma árvore continua a
 ter a sua linha. Isto acaba por ser também a melhor forma de verificar o
@@ -495,6 +463,40 @@ estrelas.
   estrelas identificadas (círculos verdes) e pose estimada.}
   \label{fig:resultados}
 \end{figure}
+
+\subsection{Classificador estrela / artefacto}
+\label{sec:classificador}
+
+Muitas das falhas acontecem porque as 20 deteções ``mais brilhantes'' não
+são as 20 estrelas mais brilhantes: pelo meio aparecem candeeiros, ramos ou
+nós de nebulosa. Para atacar isto treinámos um classificador que olha para
+cada uma das 60 deteções mais brilhantes e estima a probabilidade de ser uma
+estrela. A parte boa é que não tivemos de etiquetar nada à mão, porque o
+próprio sistema dá as etiquetas: numa fotografia resolvida, a pose diz que
+deteções caem em cima de uma estrela do catálogo (estrela) e quais não
+(artefacto).
+Das 33 fotografias resolvidas dos conjuntos que já não eram limpos tirámos
+1\,969 deteções, 74\% delas estrelas. O conjunto de teste 4 não entrou.
+
+Cada deteção é descrita por nove características: fluxo, pico, área,
+alongamento, escala do top-hat, concentração (pico vezes área sobre fluxo),
+nível e textura do fundo à volta e altura na imagem. À primeira não
+funcionou: com os valores absolutos a validação dava uma AUC de 0,53, que é
+o mesmo que tirar à sorte. Faz sentido, porque o brilho de uma estrela numa
+fotografia não tem nada a ver com o de uma estrela noutra. Passámos então a
+usar a \emph{posição relativa} de cada valor dentro da própria fotografia (0
+para o menor, 1 para o maior). Também corrigimos as etiquetas, que no início
+só contavam os pares finais e marcavam como artefacto algumas estrelas
+verdadeiras em campos densos. O classificador é uma regressão logística com
+regularização L2 e classes equilibradas, escrita em numpy
+(\texttt{src/star\_classifier.py}).
+
+Para o validar deixámos uma fotografia de fora de cada vez, treinando com as
+restantes: deu uma AUC de 0,67, precisão de 83\% e \emph{recall} de 68\%
+para a classe estrela. Não é um classificador forte, e por isso não o usamos
+para deitar deteções fora; serve só para as reordenar numa tentativa extra. Os pesos fazem sentido: um pico alto
+e um fundo mais claro (céu, não chão escuro) puxam para estrela; uma área
+grande e um fundo com textura (ramos, nebulosas) puxam para artefacto.
 
 % ---------------------------------------------------------------------
 \section{Avaliação}
