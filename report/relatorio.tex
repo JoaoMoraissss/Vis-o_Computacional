@@ -1,11 +1,6 @@
-% =====================================================================
-%  Relatório do projeto de Visão Computacional 2026/27 (FCUP)
-%  Identificação de constelações em fotografias do céu noturno
-%
-%  Overleaf: carregar este ficheiro e a pasta figuras/ (ou o .zip
-%  relatorio_overleaf.zip com "New Project > Upload Project").
-%  Se uma figura faltar, aparece uma caixa no lugar dela (não dá erro).
-% =====================================================================
+% Relatório - Visão Computacional 2026/27 (FCUP)
+% Identificação de constelações em fotografias do céu noturno
+% (as figuras estão na pasta figuras/; se faltar alguma aparece uma caixa)
 \documentclass[11pt,a4paper]{article}
 
 \usepackage[utf8]{inputenc}
@@ -33,19 +28,17 @@
   stringstyle=\color{green!40!black}, frame=single, rulecolor=\color{gray!40},
   xleftmargin=1em, framexleftmargin=1em, showstringspaces=false, upquote=true,
   literate={ã}{{\~a}}1 {á}{{\'a}}1 {é}{{\'e}}1 {ç}{{\c{c}}}1 {≈}{{$\approx$}}1
-           {°}{{$^\circ$}}1 {ó}{{\'o}}1 {í}{{\'i}}1 {ú}{{\'u}}1 {ê}{{\^e}}1}
+           {°}{{$^\circ$}}1 {ó}{{\'o}}1 {í}{{\'i}}1 {ú}{{\'u}}1 {ê}{{\^e}}1 {â}{{\^a}}1 {õ}{{\~o}}1}
 \renewcommand{\lstlistingname}{Listagem}
 
-% Figura que não rebenta a compilação se o ficheiro não existir
+% figura que não parte a compilação se o ficheiro não existir
 \newcommand{\figura}[2]{%
   \IfFileExists{#1}{\includegraphics[width=#2]{#1}}%
-  {\fbox{\parbox{#2}{\centering\vspace{2em}\texttt{#1}\\(figura em falta)\vspace{2em}}}}}
+  {\fbox{\parbox{#2}{\centering\vspace{2em}\texttt{\detokenize{#1}}\\(figura em falta)\vspace{2em}}}}}
 
 \title{\textbf{Identificação de constelações em fotografias do céu noturno}\\[4pt]
 \large Projeto de Visão Computacional 2026/27}
-\author{João Morais (up202307077) \and Rodrigo Mendes (up202308366)\\[4pt]
-\small Faculdade de Ciências da Universidade do Porto\\
-\small Docentes: Miguel Coimbra, Hélder Oliveira}
+\author{João Morais (up202307077) \and Rodrigo Mendes (up202308366)\\[4pt]}
 \date{Novembro de 2026}
 
 \begin{document}
@@ -53,85 +46,81 @@
 
 % ---------------------------------------------------------------------
 \begin{abstract}
-A partir de uma fotografia do céu noturno, sem data, local, orientação nem
-distância focal, o sistema identifica as estrelas e as constelações visíveis
-e desenha-as sobre a imagem. Usa só técnicas clássicas: deteção de estrelas
-com um top-hat morfológico e segmentação céu/paisagem, correspondência com o
-catálogo por triângulos medidos na esfera celeste, e estimação da pose da
-câmara pelo algoritmo de Kabsch. Acerta todas as 20 imagens sintéticas e as
-15 fotografias de desenvolvimento; em 26 fotografias de teste nunca vistas
-resolve 18 (69\%), com uma só resposta discutível, e rejeita os controlos
-negativos. Também resolve as fotografias que tirámos com um telemóvel,
-incluindo uma tremida. Mostramos ainda que uma melhoria da segmentação que
-parecia boa no conjunto usado para a desenhar não se confirmou num conjunto
-de teste bloqueado.
+Neste trabalho tentámos identificar as constelações numa fotografia do céu
+noturno sem saber nada sobre ela à partida: nem a data, nem o local, nem para
+onde apontava a câmara, nem a distância focal. O sistema deteta as estrelas,
+descobre a que estrelas do catálogo correspondem e desenha as constelações por
+cima da imagem. Só usámos técnicas clássicas: um top-hat morfológico e uma
+segmentação céu/paisagem para encontrar as estrelas, triângulos medidos na
+esfera celeste para as comparar com o catálogo e o algoritmo de Kabsch para
+estimar a pose da câmara. Nas 20 imagens sintéticas e nas 15 fotografias de
+desenvolvimento acerta em todas. Em 26 fotografias de teste que nunca tinha
+visto resolve 18 (69\%), dá uma resposta discutível e rejeita os dois
+controlos negativos. Também resolve as fotografias que tirámos com um
+telemóvel; a única tremida só depois de reduzida à mão. Descrevemos ainda uma
+alteração à segmentação que parecia melhorar os resultados no conjunto onde a
+desenhámos, mas que não se confirmou num conjunto de teste guardado à parte.
 \end{abstract}
 
 % ---------------------------------------------------------------------
 \section{Introdução}
 
-Reconhecer constelações é uma tarefa que um observador experiente faz
-olhando para a forma dos grupos de estrelas brilhantes. Para um computador,
-o problema é mais difícil do que parece: numa fotografia não se sabe para
-onde a câmara apontava, com que rotação, nem qual era o campo de visão; há
-centenas ou milhares de pontos brilhantes, muitos dos quais não são estrelas
-(luzes, reflexos, ramos iluminados, ruído); e a projeção da objetiva deforma
-as distâncias entre estrelas, sobretudo nas grandes angulares usadas em
-astrofotografia de paisagem.
+Quem conhece o céu reconhece Orion ou a Ursa Maior de relance, pela forma dos
+grupos de estrelas brilhantes. Pôr um computador a fazer o mesmo é mais
+difícil do que parece. Numa fotografia não sabemos para onde a câmara
+apontava, com que rotação, nem qual era o campo de visão. Há centenas ou
+milhares de pontos brilhantes, e muitos não são estrelas: candeeiros,
+reflexos, ramos iluminados, ruído do sensor. E a objetiva deforma as
+distâncias entre as estrelas, sobretudo nas grandes angulares que se usam
+muito em fotografia de paisagem noturna.
 
-O objetivo do projeto foi construir, com técnicas clássicas de visão
-computacional, um sistema que receba uma fotografia e devolva:
-\begin{itemize}
-  \item a identificação (número Hipparcos) das estrelas detetadas;
-  \item as constelações presentes na imagem;
-  \item a pose da câmara: o ponto do céu para onde apontava (ascensão reta e
-        declinação), a rotação e o campo de visão;
-  \item uma imagem com as linhas e os nomes das constelações sobrepostos.
-\end{itemize}
+O objetivo foi construir, só com técnicas clássicas de visão computacional,
+um sistema que recebe uma fotografia e devolve a identificação (número
+Hipparcos) das estrelas detetadas, as constelações presentes, a pose da
+câmara (ascensão reta e declinação do centro, rotação e campo de visão) e uma
+imagem com as linhas e os nomes das constelações desenhados por cima.
 
-A ideia central é que \emph{uma fotografia tem uma só câmara}: se
-conseguirmos estimar a pose a partir de poucas estrelas, ficam identificadas
-de uma vez todas as estrelas e constelações da imagem, e a própria pose
-serve de verificação (uma pose errada não põe as estrelas do catálogo em cima
-das estrelas da fotografia).
+O sistema assenta numa observação simples: uma fotografia foi tirada por uma
+só câmara. Se conseguirmos estimar a pose a partir de três ou quatro
+estrelas, ficam identificadas de uma vez todas as outras. Além disso, a pose
+verifica-se a si própria, porque uma pose errada não põe as estrelas do
+catálogo em cima das estrelas da fotografia.
 
-Além do método, damos especial atenção à \emph{avaliação}: separamos as
-fotografias usadas no desenvolvimento das fotografias de teste e mostramos,
-com um exemplo concreto, como avaliar no mesmo conjunto que se usou para
-tomar decisões leva a conclusões otimistas.
+Demos também bastante atenção à forma de avaliar o sistema. Separámos as
+fotografias de desenvolvimento das de teste e, na
+Secção~\ref{sec:mascara}, mostramos com um caso nosso o que acontece quando
+se avalia no mesmo conjunto que se usou para tomar decisões.
 
 % ---------------------------------------------------------------------
 \section{Trabalho relacionado}
 
-O problema de identificar um campo estelar sem informação prévia é conhecido
-em astronomia como \emph{astrometria cega}. O sistema de referência é o
-Astrometry.net~\cite{lang2010}, que usa \emph{quads} de quatro estrelas com
-um código geométrico invariante, indexados numa árvore k-d, seguidos de uma
-verificação bayesiana. A correspondência por triângulos, que adotámos, é a
-abordagem clássica de Groth~\cite{groth1986}: a forma de um triângulo,
-descrita por razões entre os lados, não muda com translação, rotação nem
-escala. Os sensores de estrelas (\emph{star trackers}) dos satélites usam
-variantes da mesma ideia, mas com campos de visão pequenos e uma lente
-calibrada.
+Em astronomia, identificar um campo de estrelas sem informação prévia chama-se
+\emph{astrometria cega}. A referência é o Astrometry.net~\cite{lang2010}, que
+descreve grupos de quatro estrelas (\emph{quads}) com um código geométrico
+invariante, guarda-os numa árvore k-d e no fim verifica cada candidato com um
+critério bayesiano. A correspondência por triângulos que usámos é mais antiga
+e vem de Groth~\cite{groth1986}: a forma de um triângulo, dada pelas razões
+entre os lados, não muda com translações, rotações nem mudanças de escala. Os
+sensores de estrelas dos satélites usam variantes desta ideia, mas com campos
+pequenos e lentes calibradas.
 
-O nosso caso é diferente em dois aspetos: as fotografias são tiradas com
-objetivas desconhecidas e muitas vezes muito grande angulares (até mais de
-100°), e contêm paisagem, luzes e nuvens. Por isso foi preciso (i) medir os
-triângulos na esfera celeste em vez de no plano da imagem e (ii) separar o
-céu da paisagem.
+O nosso caso é diferente em dois pontos. As objetivas são desconhecidas e
+muitas vezes muito abertas (há fotografias com mais de 100°), e as imagens têm
+paisagem, luzes e nuvens. Isto obrigou-nos a medir os triângulos na esfera
+celeste e não no plano da imagem, e a separar o céu da paisagem antes de
+procurar estrelas.
 
-Usámos ainda ferramentas gerais de visão computacional: morfologia
-matemática (top-hat) para a deteção~\cite{gonzalez2018}, componentes
-ligados e momentos de segunda ordem para a forma das manchas, o algoritmo
-de Kabsch~\cite{kabsch1976} para a rotação ótima entre dois conjuntos de
-vetores, mínimos quadrados robustos para refinar a pose~\cite{szeliski2022},
-e um teste da razão inspirado no de Lowe~\cite{lowe2004} para aceitar
-soluções ambíguas. A Tabela~\ref{tab:materia} liga cada parte do sistema à
-matéria da cadeira.
+De resto, usámos ferramentas gerais da área: morfologia matemática (top-hat)
+para a deteção~\cite{gonzalez2018}; componentes ligados e momentos de segunda
+ordem para a forma das manchas; o algoritmo de Kabsch~\cite{kabsch1976} para
+a rotação entre dois conjuntos de vetores; mínimos quadrados robustos para
+refinar a pose~\cite{szeliski2022}; e um teste da razão parecido com o de
+Lowe~\cite{lowe2004} para decidir em casos ambíguos. A
+Tabela~\ref{tab:materia} relaciona cada parte com a matéria da cadeira.
 
 \begin{table}[H]
   \centering
-  \caption{Onde entra a matéria das aulas teóricas.}
+  \caption{Matéria das aulas teóricas usada no projeto.}
   \label{tab:materia}
   \begin{tabular}{@{}lp{9.5cm}@{}}
     \toprule
@@ -156,28 +145,25 @@ matéria da cadeira.
 \section{Dados}
 
 \subsection{Catálogo}
-\begin{itemize}
-  \item \textbf{Estrelas:} base de dados HYG v4.1~\cite{hyg}, que junta os
-        catálogos Hipparcos, Yale Bright Star e Gliese. Guardámos as 8\,920
-        estrelas até à magnitude 6,5 (o limite a olho nu), com a posição
-        (RA, Dec), a magnitude e o número Hipparcos (HIP).
-  \item \textbf{Constelações:} as linhas das 88 constelações da IAU, na
-        cultura \emph{modern} do Stellarium~\cite{stellarium}, definidas como
-        sequências de números HIP.
-\end{itemize}
+Para as estrelas usámos a base de dados HYG v4.1~\cite{hyg}, que junta os
+catálogos Hipparcos, Yale Bright Star e Gliese. Ficámos com as 8\,920
+estrelas até à magnitude 6,5 (mais ou menos o limite a olho nu), cada uma com
+posição (RA, Dec), magnitude e número Hipparcos (HIP). As linhas das 88
+constelações da IAU vêm do Stellarium~\cite{stellarium}, cultura
+\emph{modern}, onde cada linha é uma sequência de números HIP.
 
 \subsection{Imagens sintéticas}
-Para desenvolver e testar as fases sem as dificuldades das fotografias reais,
-escrevemos um gerador de céus sintéticos. Para um centro (RA, Dec), um campo
-de visão e uma rotação, o gerador projeta o catálogo com a projeção
-gnomónica (a de uma câmara \emph{pinhole}) e desenha cada estrela como uma
-gaussiana com brilho dado pela escala de Pogson ($\times 2{,}512$ por
-magnitude). Pode acrescentar ruído do sensor, um gradiente de poluição
-luminosa, estrelas em falta (nuvens) e falsas estrelas. Cada imagem vem com a
-verdade de referência: a posição em píxeis de cada estrela. Gerámos 20 céus
-aleatórios (centro uniforme na esfera, rotação qualquer, campo de visão entre
-35° e 70°). A Figura~\ref{fig:sintetico} mostra um exemplo, usado também
-para verificar visualmente que a projeção estava correta.
+Para testar cada fase sem os problemas das fotografias reais, escrevemos um
+gerador de céus sintéticos. Dado um centro (RA, Dec), um campo de visão e uma
+rotação, o gerador projeta o catálogo com a projeção gnomónica (a de uma
+câmara \emph{pinhole}) e desenha cada estrela como uma gaussiana, com o
+brilho dado pela escala de Pogson ($\times 2{,}512$ por magnitude). Pode
+juntar ruído, um gradiente de poluição luminosa, estrelas em falta (como se
+houvesse nuvens) e estrelas falsas. Como sabemos onde pusemos cada estrela,
+temos a verdade de referência exata. Gerámos 20 céus aleatórios, com o centro
+uniforme na esfera, rotação qualquer e campo de visão entre 35° e 70°. A
+Figura~\ref{fig:sintetico} mostra um deles; foi com imagens destas que
+confirmámos que a projeção estava bem feita.
 
 \begin{figure}[H]
   \centering
@@ -188,11 +174,11 @@ para verificar visualmente que a projeção estava correta.
 \end{figure}
 
 \subsection{Fotografias reais}
-Por sugestão do docente, usámos fotografias de terceiros. Todas vieram do
-Wikimedia Commons, com licença livre (CC0, CC BY, CC BY-SA ou domínio
-público), e estão listadas com autor, licença e ligação nos ficheiros
-\texttt{FONTES.md} de cada pasta. Foram reduzidas para 2\,400 píxeis no lado
-maior. Organizámo-las em quatro conjuntos (Tabela~\ref{tab:conjuntos}).
+Seguindo a sugestão do docente, usámos fotografias de terceiros, todas do
+Wikimedia Commons e com licença livre (CC0, CC BY, CC BY-SA ou domínio
+público). O autor, a licença e a ligação de cada uma estão nos ficheiros
+\texttt{FONTES.md} de cada pasta. Reduzimo-las a 2\,400 píxeis no lado maior e
+dividimo-las em quatro conjuntos (Tabela~\ref{tab:conjuntos}).
 
 \begin{table}[H]
   \centering
@@ -210,29 +196,31 @@ maior. Organizámo-las em quatro conjuntos (Tabela~\ref{tab:conjuntos}).
   \end{tabular}
 \end{table}
 
-As fotografias cobrem Orion, Ursa Maior, Cassiopeia, Cruzeiro do Sul,
-Escorpião, Leão, Touro, Gémeos, Carina e o Triângulo de Verão, em condições
-muito variadas: astrofotografias processadas, paisagens com árvores, casas,
-neve e cidades, crepúsculo, nuvens, mosaicos de várias fotografias, uma
-objetiva olho-de-peixe e um panorama.
+Há fotografias de Orion, Ursa Maior, Cassiopeia, Cruzeiro do Sul, Escorpião,
+Leão, Touro, Gémeos, Carina e do Triângulo de Verão, e as condições variam
+muito: astrofotografias processadas, paisagens com árvores, casas, neve e
+cidades, crepúsculo, nuvens, mosaicos, uma objetiva olho-de-peixe e um
+panorama.
 
-\paragraph{Verdade de referência.} Cada pasta tem um \texttt{labels.csv} com
-as constelações que a fotografia mostra, retiradas do título ou da descrição
-da fonte e confirmadas visualmente. Fotografias com resultados manifestamente
-impróprios foram descartadas antes de qualquer corrida (por exemplo, um
-diagrama desenhado e uma fotografia com as constelações já anotadas).
+Cada pasta tem um \texttt{labels.csv} com as constelações que cada fotografia
+mostra, tiradas do título ou da descrição da fonte e confirmadas por nós a
+olhar para a imagem. Antes de correr o sistema pela primeira vez retirámos as
+fotografias que não serviam (por exemplo, um diagrama desenhado e uma
+fotografia que já tinha as constelações anotadas).
 
-\paragraph{Controlos negativos.} Duas pesquisas por ``Big Dipper'' (nome
-inglês da Ursa Maior) devolveram fotografias de uma montanha-russa com esse
-nome, em Blackpool. Ficaram nos testes como \emph{controlos negativos}: o
-resultado certo é o sistema \emph{não} dar solução. É também um exemplo de
-como etiquetas recolhidas automaticamente podem estar erradas.
+Houve um caso curioso. Duas pesquisas por ``Big Dipper'' (o nome inglês da
+Ursa Maior) devolveram fotografias de uma montanha-russa com esse nome, em
+Blackpool. Deixámo-las nos testes como \emph{controlos negativos}: aqui o
+resultado certo é o sistema não dar solução nenhuma. Serviram também para
+ver que as etiquetas recolhidas automaticamente podem estar simplesmente
+erradas.
 
 % ---------------------------------------------------------------------
 \section{Método}
 
-O sistema tem três fases (Figura~\ref{fig:pipeline}). A
-Figura~\ref{fig:resultados} mostra o resultado final em três fotografias.
+O sistema tem três fases, resumidas na Figura~\ref{fig:pipeline}; a
+Figura~\ref{fig:resultados}, mais à frente, mostra o resultado final em três
+fotografias.
 
 \begin{figure}[H]
   \centering
@@ -247,15 +235,16 @@ Figura~\ref{fig:resultados} mostra o resultado final em três fotografias.
     \node[box=blue!8, below=of det] (sky) {máscara\\do céu};
     \node[box=orange!10, right=of det] (tri) {\textbf{2. triângulos}\\20 mais brilhantes,\\20 FOV supostos};
     \node[box=gray!10, below=of tri] (idx) {índice k-d\\(catálogo HYG\\+ Stellarium)};
-    \node[box=green!10, right=of tri] (pose) {\textbf{3. pose}\\Kabsch, score,\\teste da razão};
+    \node[box=green!10, right=13mm of tri] (pose) {\textbf{3. pose}\\Kabsch, score,\\teste da razão};
     \node[box=gray!10, below=of pose] (out) {constelações\\+ sobreposição};
+    \coordinate (topo) at ([yshift=5mm]tri.north);
     \draw[arr] (in) -- (det);
     \draw[arr] (sky) -- (det);
     \draw[arr] (det) -- (tri);
     \draw[arr] (idx) -- (tri);
-    \draw[arr] (tri) -- node[above, font=\scriptsize]{hipóteses} (pose);
+    \draw[arr] (tri) -- node[above, font=\scriptsize, yshift=2mm]{hipóteses} (pose);
     \draw[arr] (pose) -- (out);
-    \draw[arr, dashed] (pose.north) -- ++(0,5mm) -| node[pos=0.25, above, font=\scriptsize]
+    \draw[arr, dashed] (pose.north) -- (pose.north |- topo) -| node[pos=0.25, above, font=\scriptsize]
       {sem solução: outra ordenação / olho-de-peixe} (det.north);
   \end{tikzpicture}
   \caption{Visão geral do sistema.}
@@ -264,20 +253,20 @@ Figura~\ref{fig:resultados} mostra o resultado final em três fotografias.
 
 \subsection{Fase 1: deteção de estrelas}
 
-\paragraph{Top-hat morfológico.} A imagem é vista como estrelas + fundo +
-ruído. O fundo (poluição luminosa, Via Láctea, paisagem) varia devagar e as
-estrelas são pequenas. A abertura morfológica com um disco $B$ maior do que
-uma estrela apaga as estrelas e mantém o fundo; subtraindo, sobram as
-estrelas:
+Podemos pensar na imagem como estrelas, mais um fundo, mais ruído. O fundo
+(poluição luminosa, Via Láctea, paisagem) varia devagar e as estrelas são
+pequenas. Uma abertura morfológica com um disco $B$ maior do que uma estrela
+apaga as estrelas e deixa o fundo, e subtraindo ficam só as estrelas:
 \begin{equation}
   T = I - (I \circ B).
 \end{equation}
-Usámos o top-hat em vez de subtrair uma mediana de janela grande porque esta
-deixava passar estruturas médias, como rochas e ramos. O raio do disco é
-proporcional à largura da imagem ($r = 0{,}004\,w$, cerca de 10 píxeis para
-2\,400 de largura), para o método não depender da resolução. Como o top-hat é
-``píxel menos mínimo local'', é sempre $\ge 0$ mesmo num céu só com ruído;
-subtrai-se por isso a mediana, senão o fundo inteiro ficava acima do limiar
+Começámos por subtrair uma mediana com uma janela grande, mas isso deixava
+passar estruturas de tamanho médio, como rochas e ramos, e acabámos por
+trocar pelo top-hat. O raio do disco é proporcional à largura da imagem
+($r = 0{,}004\,w$, uns 10 píxeis para 2\,400 de largura), para não depender
+da resolução. Há um pormenor: o top-hat é ``píxel menos mínimo local'' e por
+isso nunca é negativo, mesmo num céu só com ruído. Se não subtraíssemos a
+mediana, o fundo inteiro ficava acima do limiar
 (Listagem~\ref{lst:tophat}).
 
 \begin{lstlisting}[caption={Top-hat (\texttt{src/preprocessing.py}).},label=lst:tophat]
@@ -289,76 +278,72 @@ def tophat(gray, r_frac=0.004, sigma=1.0):
     return th - np.median(th), r
 \end{lstlisting}
 
-\paragraph{Multi-escala.} Nas astrofotografias processadas as estrelas mais
-brilhantes têm halos de 20 a 40 píxeis, maiores do que o disco, e eram
-apagadas como se fossem fundo. Corremos por isso o top-hat com raios $r$,
-$2r$ e $4r$; quando a mesma estrela aparece em várias escalas fica só a
-deteção mais brilhante (supressão de não-máximos).
+Nas astrofotografias processadas apareceu outro problema: as estrelas mais
+brilhantes têm halos de 20 a 40 píxeis, maiores do que o disco, e o top-hat
+tratava-as como fundo. Por isso corremo-lo com três raios ($r$, $2r$ e $4r$).
+Quando a mesma estrela aparece em mais do que uma escala, fica só a deteção
+mais brilhante (supressão de não-máximos).
 
-\paragraph{Limiar e componentes ligados.} O nível de ruído $\sigma$ é estimado
-pelo desvio absoluto mediano, $\sigma = 1{,}4826\cdot\mathrm{mediana}(|I -
-\mathrm{mediana}(I)|)$, que, ao contrário do desvio padrão, não é inflacionado
-pelas próprias estrelas. Ficam os píxeis acima de $5\sigma$, agrupados em
-componentes ligados (vizinhança 8). Para cada componente calculam-se o
-centróide ponderado pelo brilho (precisão abaixo do píxel), o fluxo total, o
-pico e a área.
+Para o limiar estimamos o ruído pelo desvio absoluto mediano,
+$\sigma = 1{,}4826\cdot\mathrm{mediana}(|I - \mathrm{mediana}(I)|)$, que ao
+contrário do desvio padrão não é puxado para cima pelas próprias estrelas.
+Os píxeis acima de $5\sigma$ são agrupados em componentes ligados
+(vizinhança 8), e de cada componente guardamos o centróide pesado pelo brilho
+(com precisão abaixo do píxel), o fluxo total, o pico e a área.
 
-\paragraph{Filtro de forma.} Uma estrela é uma mancha pequena e redonda.
-Com os momentos de segunda ordem de cada mancha obtém-se a elipse
-equivalente; rejeitam-se manchas com razão entre eixos superior a 2,5 (ramos,
-traços de aviões, riscos) e manchas maiores do que o dobro da área do disco.
-As deteções são ordenadas por fluxo, da mais brilhante para a menos.
+Por fim, uma estrela deve ser uma mancha pequena e redonda. A partir dos
+momentos de segunda ordem calculamos a elipse equivalente de cada mancha e
+deitamos fora as que têm razão entre eixos acima de 2,5 (ramos, rastos de
+aviões, riscos) ou área maior do que o dobro da do disco. As deteções que
+sobram ficam ordenadas por fluxo, da mais brilhante para a menos brilhante.
 
 \subsection{Segmentação céu / paisagem}
 
-Nas fotografias de paisagem, luzes, rochas e ramos iluminados produzem
-deteções brilhantes que passavam à frente das estrelas. A máscara do céu
-trabalha numa versão reduzida da imagem (600 píxeis de largura), depois de
-normalizar o contraste e de apagar as estrelas com uma abertura:
-\begin{enumerate}
-  \item mede a \emph{textura} pelo desvio padrão local numa janela 15$\times$15;
-        uma zona é lisa se a textura for menor do que 3 vezes a textura
-        típica da faixa de cima da imagem;
-  \item \textbf{regra 1:} uma zona lisa ligada ao topo da imagem é céu;
-  \item \textbf{regra 2:} uma zona texturada que não toca na borda de baixo
-        também é céu (Via Láctea, nebulosas ou halos ``a flutuar'' no céu;
-        a paisagem está sempre em baixo);
-  \item no fim encolhe-se a máscara para a afastar do horizonte.
-\end{enumerate}
-Esta é a versão 1, usada por omissão. Na Secção~\ref{sec:mascara} descrevemos
-uma versão 2 e porque não a adotámos.
+Nas fotografias com paisagem, candeeiros, rochas e ramos iluminados davam
+deteções mais brilhantes do que as estrelas e passavam-lhes à frente na
+lista. A máscara do céu é calculada numa versão reduzida da imagem (600
+píxeis de largura), depois de normalizar o contraste e de apagar as estrelas
+com uma abertura. Primeiro medimos a textura com o desvio padrão local numa
+janela de 15$\times$15; uma zona conta como lisa se a textura for menos de 3
+vezes a textura típica da faixa de cima da imagem. Depois aplicamos duas
+regras. Uma zona lisa ligada ao topo da imagem é céu. Uma zona texturada que
+não toca na borda de baixo também é céu, porque costuma ser a Via Láctea,
+uma nebulosa ou um halo a ``flutuar'' no céu, e a paisagem está sempre em
+baixo. No fim encolhemos um pouco a máscara para a afastar do horizonte.
+
+É esta a versão 1, que o sistema usa por omissão. Também fizemos uma versão
+2, descrita na Secção~\ref{sec:mascara}, mas acabámos por não a adotar.
 
 \subsection{Fase 2: correspondência por triângulos}
 
-\paragraph{Descritor.} Para três estrelas com lados ordenados
-$a \ge b \ge c$, o par
+Para três estrelas com os lados ordenados $a \ge b \ge c$, o par
 \begin{equation}
   d = \left(\tfrac{b}{a},\ \tfrac{c}{a}\right)
 \end{equation}
-descreve a forma do triângulo e é invariante a translação, rotação, escala e
-espelho. Triângulos com $c/a < 0{,}05$ são instáveis (um píxel de erro muda
-muito a razão) e são descartados.
+descreve a forma do triângulo e não muda com translações, rotações, escala nem
+espelhamento. Descartamos triângulos com $c/a < 0{,}05$: são tão achatados que
+um píxel de erro muda muito a razão.
 
-\paragraph{Primeira versão: triângulos no plano.} Inicialmente os lados eram
-medidos em píxeis. Funcionava nas imagens sintéticas, mas só resolvia 7 das
-15 fotografias de desenvolvimento. A razão é geométrica: uma câmara faz uma
-projeção gnomónica, que a um ângulo $\theta$ do eixo estica a direção radial
-por $1/\cos^2\theta$ e a tangencial só por $1/\cos\theta$. A 35° do centro
-um triângulo fica cerca de 22\% deformado, e a tolerância do descritor era de
-1\%. Todas as fotografias da Ursa Maior, tiradas com grandes angulares,
-falhavam.
+Na primeira versão medíamos os lados em píxeis. Nas imagens sintéticas
+funcionava, mas das 15 fotografias de desenvolvimento só resolvia 7, e
+falhava em todas as da Ursa Maior, tiradas com grandes angulares. Foi aí que
+percebemos que o problema era geométrico. A projeção gnomónica, a um ângulo
+$\theta$ do eixo, estica a direção radial por $1/\cos^2\theta$ e a
+tangencial só por $1/\cos\theta$. A 35° do centro um triângulo fica
+deformado em cerca de 22\%, e o descritor só tolerava 1\%.
 
-\paragraph{Versão final: triângulos na esfera.} No catálogo os lados passam a
-ser \emph{ângulos} no céu, que não dependem de nenhuma projeção. Na imagem,
-para um campo de visão suposto $F$ (com distância focal $f = (w/2)/\tan(F/2)$),
-cada píxel $(u,v)$ centrado converte-se num raio 3-D $(u, v, f)/\|(u,v,f)\|$, e
-os lados dos triângulos da imagem também passam a ser ângulos, sem
-deformação. Como $F$ é desconhecido, experimentam-se 20 valores entre 8° e
-100° em progressão geométrica (passos de cerca de 14\%). Com $F$ suposto, o
-\emph{tamanho} do triângulo (o lado maior em graus) também tem de coincidir,
-com 15\% de tolerância, o que elimina a maior parte dos candidatos falsos.
-O mesmo código serve para a imagem e para o catálogo: só muda a matriz $A$ de
-ângulos entre estrelas (Listagem~\ref{lst:tri}).
+A solução foi deixar de medir os triângulos na imagem e passar a medi-los na
+esfera. No catálogo os lados passam a ser ângulos no céu, que não dependem de
+projeção nenhuma. Na imagem, para um campo de visão suposto $F$ (e portanto
+uma distância focal $f = (w/2)/\tan(F/2)$), cada píxel centrado $(u,v)$ dá um
+raio 3-D $(u, v, f)/\|(u,v,f)\|$, e os lados dos triângulos também passam a
+ser ângulos, já sem deformação. Como não sabemos $F$, experimentamos 20
+valores entre 8° e 100° em progressão geométrica, com passos de cerca de
+14\%. Uma vantagem extra é que, com $F$ fixo, o tamanho do triângulo (o lado
+maior, em graus) também tem de coincidir, com 15\% de tolerância, e isso
+elimina a maior parte dos candidatos falsos. A mesma função serve para a
+imagem e para o catálogo; só muda a matriz $A$ de ângulos entre estrelas
+(Listagem~\ref{lst:tri}).
 
 \begin{lstlisting}[caption={Descritores de muitos triângulos de uma vez (\texttt{src/matching\_sphere.py}).},label=lst:tri]
 def triangles_from_angles(A, combos):
@@ -371,29 +356,28 @@ def triangles_from_angles(A, combos):
     return desc[ok], s[ok, 0], np.take_along_axis(combos, order, axis=1)[ok]
 \end{lstlisting}
 
-\paragraph{Índice.} Para cada constelação usamos as 10 estrelas mais
-brilhantes das suas linhas e todos os triângulos entre elas: 4\,331
-triângulos de 80 constelações, guardados numa árvore k-d. Na imagem usamos
-as 20 deteções mais brilhantes (1\,140 triângulos por campo de visão
-suposto). Cada triângulo da imagem procura no índice os triângulos com
-descritor a menos de 0,01.
+Para o índice, pegamos nas 10 estrelas mais brilhantes das linhas de cada
+constelação e em todos os triângulos entre elas, o que dá 4\,331 triângulos
+de 80 constelações, guardados numa árvore k-d. Do lado da imagem usamos as 20
+deteções mais brilhantes (1\,140 triângulos por cada campo de visão suposto),
+e cada triângulo procura no índice os que têm descritor a menos de 0,01.
 
 \subsection{Fase 3: pose da câmara e verificação}
 
-\paragraph{Hipóteses.} Cada par (triângulo da imagem, triângulo do catálogo)
-é uma hipótese. Testam-se primeiro as que usam as estrelas mais brilhantes
-da imagem e do catálogo, até um máximo de 5\,000.
+Cada par (triângulo da imagem, triângulo do catálogo) é uma hipótese.
+Testamos primeiro as que envolvem as estrelas mais brilhantes da imagem e do
+catálogo, até um máximo de 5\,000.
 
-\paragraph{Rotação por Kabsch.} Com três pares estrela$\leftrightarrow$raio,
-a rotação $R$ que leva os vetores do céu $V$ aos raios da câmara $D$ sai
-exata pela decomposição em valores singulares~\cite{kabsch1976}:
+Com três pares estrela$\leftrightarrow$raio, a rotação $R$ que leva os
+vetores do céu $V$ aos raios da câmara $D$ obtém-se de forma exata pela
+decomposição em valores singulares~\cite{kabsch1976}:
 \begin{equation}
   V^\top D = U \Sigma W^\top, \qquad
   R = W\,\mathrm{diag}(1, 1, \det(W U^\top))\,U^\top .
 \end{equation}
-O termo $\det(WU^\top)$ impede que a solução seja um espelho: uma fotografia
-normal do céu só roda, nunca inverte. Em código são três linhas
-(Listagem~\ref{lst:kabsch}).
+O termo $\det(WU^\top)$ serve para a solução nunca ser um espelho, já que uma
+fotografia do céu pode estar rodada mas não invertida. Em código fica em
+três linhas (Listagem~\ref{lst:kabsch}).
 
 \begin{lstlisting}[caption={Rotação de Kabsch (\texttt{src/matching\_sphere.py}).},label=lst:kabsch]
 def kabsch(V, D):
@@ -402,53 +386,53 @@ def kabsch(V, D):
     return Vt.T @ np.diag([1, 1, d]) @ U.T
 \end{lstlisting}
 
-\paragraph{Porque é que um triângulo errado não engana o sistema.} Os
-triângulos só geram palpites baratos, muitos deles errados: com milhares de
-triângulos no céu há sempre coincidências de forma. Quem decide é a
-verificação com o catálogo inteiro. Numa das nossas fotografias
+Convém dizer que a maior parte das hipóteses está errada. Com milhares de
+triângulos no céu há sempre coincidências de forma, e os triângulos servem
+apenas para gerar palpites baratos. Quem decide é a verificação com o
+catálogo inteiro. Para ter uma ideia: numa das nossas fotografias
 ($1\,530\times2\,040$ píxeis) a tolerância é de 12 píxeis, e os círculos à
 volta das 90 estrelas do catálogo consideradas cobrem cerca de 1,3\% da
-imagem. Uma pose errada acerta por isso, em média, em menos de uma das 30
-deteções; a pose certa acertou em 25 e 27 ao mesmo tempo
+imagem. Uma pose errada acerta, em média, em menos de uma das 30 deteções. A
+pose certa acertou em 25 numa fotografia e em 27 na outra
 (Secção~\ref{sec:proprias}).
 
-\paragraph{Pontuação.} Com $(R, f)$ projeta-se o catálogo na imagem.
-A pontuação é a fração das $N=30$ deteções mais brilhantes que ficam a menos
-de $0{,}006\max(w,h)$ píxeis de uma das $3N$ estrelas do catálogo mais
-brilhantes dentro da imagem. Limitar o catálogo às mais brilhantes é
-essencial: sem isso, uma pose com um campo de visão enorme mete milhares de
-estrelas na imagem e acerta em muitas deteções por acaso. Primeiro conta-se
-com uma tolerância três vezes maior; se passar, refinam-se $f$ (em $\pm15\%$)
-e $R$ com todos os pares encontrados e volta-se a contar com a tolerância
-final. A pesquisa para quando uma hipótese explica 90\% das deteções.
+Para pontuar uma pose $(R, f)$ projetamos o catálogo na imagem e contamos que
+fração das $N=30$ deteções mais brilhantes fica a menos de $0{,}006\max(w,h)$
+píxeis de alguma das $3N$ estrelas do catálogo mais brilhantes dentro da
+imagem. Limitar o catálogo às mais brilhantes foi essencial: sem isso, uma
+pose com um campo de visão enorme metia milhares de estrelas na imagem e
+acertava em muitas deteções por acaso. Contamos primeiro com uma tolerância
+três vezes maior; se a pose passar, refinamos $f$ (em $\pm15\%$) e $R$ com
+todos os pares encontrados e voltamos a contar com a tolerância final. A
+pesquisa pára quando uma hipótese explica 90\% das deteções.
 
-\paragraph{Aceitação.} Aceita-se a melhor pose se a pontuação for pelo menos
-0,5, ou, como no teste da razão de Lowe~\cite{lowe2004}, se for pelo menos
-0,3 \emph{e} 1,8 vezes maior do que a melhor pose diferente (eixo a mais de
-5°). Com nuvens ou muitas estrelas tapadas a pose certa pode ficar abaixo de
-0,5, mas uma pose errada nunca se destaca das outras coincidências.
+A melhor pose é aceite se tiver pontuação de pelo menos 0,5. Também é aceite
+com pelo menos 0,3 se for 1,8 vezes melhor do que a melhor pose diferente
+(com o eixo a mais de 5°), à semelhança do teste da razão de
+Lowe~\cite{lowe2004}. A ideia é que, com nuvens ou estrelas tapadas, a pose
+certa pode ficar abaixo de 0,5, mas uma pose errada não se destaca das outras
+coincidências.
 
-\paragraph{Refinamento.} A pose é convertida para (RA, Dec do centro,
-rotação, campo de visão) e refinada por mínimos quadrados com perda
-\emph{soft-L1}, primeiro só com as estrelas brilhantes e uma tolerância
-larga, depois com todas. O modelo de câmara é \emph{pinhole} ($r = f\tan\theta$)
-ou, como último recurso, olho-de-peixe equidistante ($r = f\theta$).
+A pose aceite é convertida em (RA e Dec do centro, rotação, campo de visão)
+e refinada por mínimos quadrados com perda \emph{soft-L1}, primeiro só com as
+estrelas brilhantes e uma tolerância larga e depois com todas. O modelo de
+câmara é \emph{pinhole} ($r = f\tan\theta$) ou, em último recurso,
+olho-de-peixe equidistante ($r = f\theta$).
 
-\paragraph{Identificação.} Com a pose final, cada deteção é associada à
-estrela do catálogo projetada mais próxima (só pares mútuos). Uma
-constelação é reportada se tiver pelo menos 4 estrelas identificadas, ou,
-para constelações pequenas como o Cruzeiro do Sul, pelo menos 3 que sejam
-60\% das suas estrelas visíveis.
+Com a pose final associamos cada deteção à estrela do catálogo projetada mais
+próxima, só em pares mútuos. Uma constelação é reportada se tiver pelo menos
+4 estrelas identificadas; para constelações pequenas, como o Cruzeiro do
+Sul, bastam 3, desde que sejam pelo menos 60\% das suas estrelas visíveis.
 
-\paragraph{Tentativas.} Se nada for aceite, repete-se com outra ordenação
-das deteções (pelo pico, com as estrelas quase saturadas empatadas, o que
-ajuda quando há manchas difusas grandes) e, por fim, com o modelo
-olho-de-peixe.
+Se nenhuma pose for aceite, o sistema tenta outra vez com outra ordenação das
+deteções (pelo pico, com as estrelas quase saturadas empatadas, o que ajuda
+quando há manchas difusas grandes) e, por fim, com o modelo olho-de-peixe.
 
-\paragraph{Sobreposição.} As linhas são desenhadas a partir do catálogo
-projetado e não das deteções; uma estrela tapada por uma árvore continua a
-ter a linha desenhada. É também a melhor verificação visual: com uma pose
-errada, as linhas não caem sobre as estrelas.
+As linhas das constelações são desenhadas a partir do catálogo projetado, não
+das deteções, e por isso uma estrela escondida atrás de uma árvore continua a
+ter a sua linha. Isto acaba por ser também a melhor forma de verificar o
+resultado a olho: se a pose estiver errada, as linhas não caem em cima das
+estrelas.
 
 \begin{figure}[H]
   \centering
@@ -474,50 +458,49 @@ errada, as linhas não caem sobre as estrelas.
 
 \subsection{Metodologia}
 
-\paragraph{Separação dos dados.} As 15 fotografias de \texttt{data/samples}
-foram usadas para tomar todas as decisões do método (limiares, multi-escala,
-teste da razão, modelo olho-de-peixe, \ldots). O resultado nelas mede o que o
-método \emph{consegue} fazer, mas é otimista. A medida honesta é o desempenho
-em fotografias nunca vistas, tal como o conjunto de teste em aprendizagem
-automática. A regra foi: \emph{não mudar nada depois de olhar para o
-resultado de um conjunto de teste}. Quando um conjunto de teste foi usado para
-diagnosticar ou corrigir alguma coisa, deixou de ser limpo e juntámos outro
-antes da medição seguinte; daí os três conjuntos de teste.
+Todas as decisões sobre o método (limiares, multi-escala, teste da razão,
+modelo olho-de-peixe, etc.) foram tomadas a olhar para as 15 fotografias de
+\texttt{data/samples}. O resultado nessas fotografias mostra do que o método
+é capaz, mas é otimista. A medida que interessa é o desempenho em
+fotografias que o sistema nunca viu, como o conjunto de teste em aprendizagem
+automática. Impusemo-nos uma regra: depois de ver o resultado num conjunto de
+teste, não mudamos nada com base nele. Quando acabámos por usar um conjunto
+de teste para diagnosticar ou corrigir alguma coisa, deixámos de o
+considerar limpo e juntámos outro antes da medição seguinte. É por isso que
+há três conjuntos de teste.
 
-\paragraph{Veredicto por fotografia.}
-\begin{itemize}
-  \item \textbf{certo:} houve solução e inclui pelo menos uma das constelações
-        esperadas;
-  \item \textbf{errado:} houve solução, mas nenhuma das esperadas (falso
-        positivo, o erro mais grave);
-  \item \textbf{falhou:} não houve solução (falso negativo);
-  \item \textbf{rejeitou:} controlo negativo sem solução (correto).
-\end{itemize}
+Cada fotografia recebe um de quatro veredictos. É \textbf{certa} se houve
+solução e esta inclui pelo menos uma das constelações esperadas;
+\textbf{errada} se houve solução mas nenhuma das esperadas (um falso
+positivo, o pior erro possível); \textbf{sem solução} se o sistema não deu
+resposta; e nos controlos negativos dizemos que o sistema \textbf{rejeitou}
+quando, corretamente, não deu solução.
 
-\paragraph{Métricas nas fotografias certas.} Erro da pose (mediana da
-distância entre cada estrela identificada e a posição prevista pela pose);
-\emph{recall} da deteção (fração das estrelas do catálogo até magnitude 4,5
-que a pose põe no céu da imagem e que foram detetadas); precisão da deteção
-(fração das 30 deteções mais brilhantes que são estrelas reais até magnitude
-6,5). Estas duas últimas usam a pose encontrada como verdade, por não haver
-outra numa fotografia real; são por isso um pouco otimistas.
+Nas fotografias certas medimos ainda três coisas. O erro da pose é a mediana
+da distância entre cada estrela identificada e a posição que a pose prevê. O
+\emph{recall} da deteção é a fração das estrelas do catálogo até magnitude
+4,5 que a pose põe na zona de céu da imagem e que foram detetadas. A
+precisão da deteção é a fração das 30 deteções mais brilhantes que
+correspondem a estrelas reais até magnitude 6,5. Estas duas últimas usam a
+própria pose como verdade, porque numa fotografia real não temos outra, e
+por isso são um pouco otimistas.
 
-Tudo é calculado por \texttt{src/evaluate.py}, que grava as tabelas em
+Tudo isto é calculado por \texttt{src/evaluate.py}, que grava as tabelas em
 \texttt{results/metrics/}.
 
 \subsection{Imagens sintéticas}
 
-Nas 20 imagens sintéticas o sistema resolveu todas, com precisão e
-\emph{recall} de 100\% nas constelações, 98,6\% das estrelas com o número HIP
-correto, erro do centro da pose da ordem de $0{,}001°$ e 0,7\,s por imagem.
-As imagens sintéticas seguem exatamente o modelo de câmara do sistema e não
-têm paisagem, por isso validam a geometria mas não dizem nada sobre
-fotografias reais.
+O sistema resolveu as 20 imagens sintéticas, com precisão e \emph{recall} de
+100\% nas constelações, 98,6\% das estrelas com o número HIP certo, um erro
+no centro da pose da ordem de $0{,}001°$ e 0,7\,s por imagem. Não convém
+tirar daqui grandes conclusões. Estas imagens seguem à risca o modelo de
+câmara do sistema e não têm paisagem, por isso confirmam que a geometria está
+certa mas não dizem quase nada sobre fotografias reais.
 
 \subsection{Fotografias reais}
 
-A Tabela~\ref{tab:reais} resume os resultados com a máscara do céu versão 1
-(a usada por omissão).
+A Tabela~\ref{tab:reais} tem os resultados com a máscara do céu v1, a que o
+sistema usa por omissão.
 
 \begin{table}[H]
   \centering
@@ -539,36 +522,36 @@ A Tabela~\ref{tab:reais} resume os resultados com a máscara do céu versão 1
   \end{tabular}
 \end{table}
 
-Os pontos principais:
-\begin{itemize}
-  \item A taxa de acerto cai de 100\% nas fotografias de desenvolvimento para
-        69\% (18/26) nas de teste. Esta diferença é o custo de ter afinado o
-        método nas mesmas 15 fotografias, e é a razão para separar os dados.
-  \item Quando o sistema dá uma resposta, quase sempre está certa: 18 certas
-        em 19 respostas, e os dois controlos negativos foram rejeitados. O
-        sistema prefere não responder a inventar uma constelação.
-  \item A única resposta ``errada'' (\texttt{cru\_06}) merece reserva: a pose
-        encontrada põe Hadar e o resto de Centauro no sítio certo, com 671
-        estrelas emparelhadas, e o Cruzeiro do Sul aparece cortado na borda da
-        imagem, por isso não chega a ser reportado. É mais provável que a
-        etiqueta esteja incompleta do que a pose errada. Não alterámos a
-        etiqueta, porque mudá-la depois de ver o resultado seria enviesar a
-        avaliação.
-  \item Quando a solução é encontrada, a pose é precisa: 2 a 4 píxeis de erro
-        mediano em imagens de 2\,400 píxeis, com centenas de estrelas
-        identificadas por fotografia.
-  \item O tempo é de 6 a 15\,s por fotografia, dominado pela pesquisa de
-        hipóteses nas fotografias sem solução.
-\end{itemize}
+A taxa de acerto cai de 100\% nas fotografias de desenvolvimento para 69\%
+(18 em 26) nas de teste. Esta diferença é o preço de termos afinado o método
+sempre nas mesmas 15 fotografias, e é exatamente por isso que separámos os
+dados.
+
+Por outro lado, quando o sistema responde, quase sempre acerta: 18 certas em
+19 respostas, e os dois controlos negativos foram rejeitados. Na dúvida, o
+sistema prefere não responder a inventar uma constelação.
+
+A única resposta errada (\texttt{cru\_06}) é discutível. A pose encontrada
+põe Hadar e o resto de Centauro no sítio certo, com 671 estrelas
+emparelhadas; o Cruzeiro do Sul, que é a constelação da etiqueta, fica
+cortado na borda da imagem e por isso não chega a ser reportado. O mais
+provável é que a etiqueta esteja incompleta e a pose esteja certa. Mesmo
+assim não mexemos na etiqueta: mudá-la depois de ver o resultado seria
+enviesar a avaliação a nosso favor.
+
+Quando há solução, a pose é precisa: 2 a 4 píxeis de erro mediano em imagens
+de 2\,400 píxeis, com centenas de estrelas identificadas por fotografia. Cada
+fotografia demora entre 6 e 15\,s, e quem demora mais são as fotografias sem
+solução, onde o sistema esgota as hipóteses todas.
 
 \subsection{Fotografias próprias}
 \label{sec:proprias}
 
-Depois de fechado o método, tirámos três fotografias com um telemóvel, sem
-tripé e sem EXIF (\texttt{data/proprias/}). São o teste mais realista que
-temos: câmara que o sistema nunca viu, céu de uma aldeia com casas
-iluminadas em primeiro plano e, numa delas, uma mão pouco firme. Nada foi
-afinado depois destas fotografias.
+Depois de dar o método por fechado, tirámos três fotografias com um
+telemóvel, à mão e sem EXIF (\texttt{data/proprias/}). É o teste mais
+realista que temos: uma câmara que o sistema nunca viu, o céu de uma aldeia
+com casas iluminadas em primeiro plano e, numa das fotografias, a mão a
+tremer. Não alterámos nada no sistema depois de as correr.
 
 \begin{table}[H]
   \centering
@@ -587,14 +570,14 @@ afinado depois destas fotografias.
   \end{tabular}
 \end{table}
 
-\paragraph{Orion sobre as casas.} As duas fotografias foram resolvidas à
-primeira tentativa, com as duas versões da máscara do céu a darem o mesmo
-resultado (Figura~\ref{fig:proprias}). A máscara cortou as casas e os muros
-iluminados, e a pose explica 25 e 27 das 30 deteções mais brilhantes. As
-linhas de Gémeos e do Unicórnio aparecem onde a olho nu mal se veem
-estrelas: o sistema não as ``viu'' todas, desenha-as onde \emph{têm} de
-estar dada a pose. Como Orion, Touro e Cão Maior caem certos, o resto também
-está certo.
+As duas fotografias de Orion sobre as casas foram resolvidas à primeira
+tentativa, e as duas versões da máscara do céu deram o mesmo resultado
+(Figura~\ref{fig:proprias}). A máscara cortou as casas e os muros iluminados,
+e a pose explica 25 e 27 das 30 deteções mais brilhantes. As linhas de
+Gémeos e do Unicórnio aparecem em zonas onde a olho nu quase não se veem
+estrelas. O sistema não as detetou todas: desenha-as onde elas \emph{têm} de
+estar, dada a pose. E se Orion, o Touro e o Cão Maior estão no sítio certo,
+o resto também está.
 
 \begin{figure}[H]
   \centering
@@ -615,19 +598,19 @@ está certo.
   \label{fig:proprias}
 \end{figure}
 
-\paragraph{A fotografia tremida.} Tirada à janela, com o caixilho branco à
-esquerda e uma exposição longa feita à mão: cada estrela é um pequeno risco
-ou um ``ganchinho'' com vários pontos (Figura~\ref{fig:tremida}b). Na
-resolução original o sistema não encontra solução: cada risco parte-se em
-várias manchas, há milhares de deteções e as 20 mais brilhantes já não são as
-20 estrelas mais brilhantes. Reduzindo a imagem a 25\%, cada risco volta a
-caber num ou dois píxeis, e a fotografia é resolvida com score 0,97
-(Perseu, Andrómeda, Cassiopeia, Carneiro e Touro, com as Plêiades). A 50\%
-sai a mesma pose, o que é uma confirmação independente. Como a pose não
-depende da resolução, desenhámo-la sobre a fotografia original
-(Figura~\ref{fig:tremida}c). Esta redução ainda não está automatizada; seria
-uma tentativa extra natural em \texttt{main.solve} quando há demasiadas
-deteções.
+A terceira fotografia foi tirada à janela, com uma exposição longa e o
+telemóvel na mão, e saiu tremida: cada estrela ficou um pequeno risco ou um
+``ganchinho'' com vários pontos (Figura~\ref{fig:tremida}b). Na resolução
+original o sistema não encontra solução. Cada risco parte-se em várias
+manchas, aparecem milhares de deteções, e as 20 mais brilhantes já não são as
+20 estrelas mais brilhantes. Experimentámos reduzir a imagem a 25\%: cada
+risco volta a caber em um ou dois píxeis e a fotografia é resolvida com
+pontuação 0,97 (Perseu, Andrómeda, Cassiopeia, Carneiro e Touro, com as
+Plêiades). A 50\% obtém-se a mesma pose, o que confirma o resultado. Como a
+pose não depende da resolução, desenhámo-la sobre a fotografia original
+(Figura~\ref{fig:tremida}c). Por agora esta redução é feita à mão; faria
+sentido acrescentá-la como mais uma tentativa em \texttt{main.solve} quando
+há deteções a mais.
 
 \begin{figure}[H]
   \centering
@@ -648,34 +631,41 @@ deteções.
   \label{fig:tremida}
 \end{figure}
 
-\subsection{Uma melhoria que não se confirmou: a máscara do céu v2}
+\subsection{Uma melhoria aparente: a máscara do céu v2}
 \label{sec:mascara}
 
-\paragraph{Diagnóstico.} As três falhas do teste 1 vinham todas da máscara do
-céu. Num mosaico com bordas pretas, a faixa de referência do topo era borda
-preta, a textura de referência dava zero e o céu verdadeiro era classificado
-como paisagem (0 deteções). Numa fotografia com uma cidade e noutra com
-árvores, a silhueta preta e lisa do chão passava por céu liso, e a faixa
-texturada do horizonte, por não tocar na borda de baixo, ``flutuava'' e
-também passava por céu: a máscara cobria 100\% da imagem.
+Começamos pela conclusão: a versão 2 da máscara do céu parecia bem melhor no
+conjunto de fotografias que usámos para a desenhar, mas num conjunto de teste
+novo não se mostrou melhor do que a versão 1. Por isso não a adotámos. Esta
+secção conta como lá chegámos.
 
-\paragraph{Versão 2.} Acrescentámos três regras, cada uma motivada por medições:
+As três falhas do teste 1 tinham todas a mesma origem, a máscara do céu. Num
+mosaico com bordas pretas, a faixa de referência no topo da imagem era borda
+preta, a textura de referência dava zero e o céu verdadeiro era todo
+classificado como paisagem (zero deteções). Noutras duas fotografias, uma com
+uma cidade e outra com árvores, acontecia o contrário: a silhueta preta e
+lisa do chão passava por céu liso, e a faixa texturada do horizonte, como
+não tocava na borda de baixo, ``flutuava'' e também passava por céu. A
+máscara cobria a imagem inteira.
+
+Para resolver isto fizemos uma versão 2 com três regras novas, cada uma
+baseada em medições nas imagens:
 \begin{enumerate}
-  \item \textbf{Zonas sem dados:} zonas grandes de preto exato, ligadas à
-        borda e \emph{sem estrelas}, são ignoradas; ``topo'' e ``fundo''
+  \item \textbf{Zonas sem dados.} Zonas grandes de preto exato, ligadas à
+        borda e sem estrelas, passam a ser ignoradas, e ``topo'' e ``fundo''
         passam a ser, em cada coluna, o primeiro e o último píxel com dados.
-        A condição ``sem estrelas'' surgiu porque uma fotografia processada
-        com o preto cortado tinha o céu a zero exato entre as estrelas
-        (medimos 40 píxeis brilhantes por 10 mil, contra menos de 0,2 nas
-        bordas de mosaicos).
-  \item \textbf{Chão escuro:} o que é escuro (abaixo de 40\% do nível do
-        céu, medido só nos píxeis lisos do topo) ou texturado e está ligado
-        ao fundo é chão.
-  \item \textbf{Silhuetas, não vinhetagem:} uma zona escura só é chão se pelo
-        menos 20\% da sua fronteira for texturada. Uma silhueta acaba numa
-        aresta brusca; a vinhetagem da objetiva escurece os cantos aos poucos
-        (medimos 25\% a 100\% de fronteira texturada nas silhuetas e 4\% num
-        canto vinhetado).
+        A condição ``sem estrelas'' foi acrescentada porque numa fotografia
+        processada com o preto cortado o céu entre as estrelas estava a zero
+        exato. Medimos 40 píxeis brilhantes por cada 10 mil nesse céu, contra
+        menos de 0,2 nas bordas dos mosaicos.
+  \item \textbf{Chão escuro.} O que for escuro (abaixo de 40\% do nível do
+        céu, medido só nos píxeis lisos do topo) ou texturado e estiver
+        ligado ao fundo da imagem é chão.
+  \item \textbf{Silhuetas, não vinhetagem.} Uma zona escura só conta como chão
+        se pelo menos 20\% da sua fronteira for texturada. Uma silhueta acaba
+        numa aresta brusca, enquanto a vinhetagem escurece os cantos aos
+        poucos. Nas silhuetas medimos entre 25\% e 100\% de fronteira
+        texturada; num canto vinhetado, 4\%.
 \end{enumerate}
 A Figura~\ref{fig:mascaras} compara as duas versões.
 
@@ -689,7 +679,7 @@ A Figura~\ref{fig:mascaras} compara as duas versões.
   \label{fig:mascaras}
 \end{figure}
 
-\paragraph{Resultado.} A Tabela~\ref{tab:mascara} mostra o que aconteceu.
+A Tabela~\ref{tab:mascara} mostra o que aconteceu a seguir.
 
 \begin{table}[H]
   \centering
@@ -707,43 +697,46 @@ A Figura~\ref{fig:mascaras} compara as duas versões.
   \end{tabular}
 \end{table}
 
-No teste 1, que usámos para a desenhar, a v2 parecia subir o acerto de 73\%
-para 91\%. No teste 2, avaliado antes da correção do céu cortado, a v2 ficou
-com 6/8 contra 7/8 da v1: a regra do chão escuro partia do princípio de que
-o chão é mais escuro do que o céu, o que é falso quando há objetos
-iluminados. Depois da correção, o teste 3, juntado antes de qualquer corrida
-e corrido uma única vez com cada versão, deu 3/7 à v1 e 2/7 à v2.
-Com tão poucas fotografias, uma de diferença é ruído; mas também não há
-nenhuma prova de que a v2 seja melhor. Mantivemos por isso a v1 por omissão e
-a v2 como opção (\texttt{--mask 2}).
+No teste 1, que foi onde desenhámos a v2, o acerto parecia subir de 73\% para
+91\%. No teste 2, antes da correção do céu cortado, a v2 teve 6/8 e a v1 7/8:
+a regra do chão escuro assumia que o chão é mais escuro do que o céu, e isso
+deixa de ser verdade quando há objetos iluminados. Corrigimos a v2 e só
+depois corremos o teste 3, que tínhamos juntado antes de qualquer corrida e
+que corremos uma única vez com cada versão. Deu 3/7 à v1 e 2/7 à v2.
 
-A lição é metodológica: se tivéssemos medido só no conjunto usado para
-desenhar a v2, teríamos reportado uma melhoria de 18 pontos percentuais que
-não existe.
+Com tão poucas fotografias, uma de diferença não quer dizer nada. Mas também
+não temos nenhuma prova de que a v2 seja melhor, por isso o sistema continua
+a usar a v1 por omissão e a v2 fica como opção (\texttt{--mask 2}). Se nos
+tivéssemos ficado pelo teste 1, teríamos escrito neste relatório uma melhoria
+de 18 pontos percentuais que, tanto quanto conseguimos ver, não existe. É o
+mesmo problema de afinar um modelo com o conjunto de teste: as regras novas
+foram feitas à medida daquelas fotografias, e por isso nelas funcionam
+sempre.
 
 \subsection{Análise das falhas do teste 3}
 
-Corremos experiências de diagnóstico (sem alterar o código) nas três
-fotografias do teste 3 sem solução com ambas as máscaras:
-\begin{itemize}
-  \item \textbf{Nebulosa de Carina:} 19 das 20 deteções ``mais brilhantes''
-        vinham da maior escala do top-hat, onde o fluxo de uma deteção soma
-        uma área grande: num campo denso da Via Láctea, os nós da nebulosa e
-        os enxames ``brilham'' mais do que estrelas isoladas
-        (Figura~\ref{fig:carina}). Usando só as escalas $r$ e $2r$, o sistema
-        resolve a fotografia corretamente (Carina, Cruzeiro do Sul, Mosca e
-        Vela).
-  \item \textbf{Orion sobre o deserto de Atacama:} só resolve com três
-        alterações em simultâneo: um campo de visão de cerca de 116°, acima do
-        limite de 100° da grelha (as Plêiades e Sírius estão a 59,5° uma da
-        outra e ocupam só 60\% da largura); o modelo olho-de-peixe; e um corte
-        manual do horizonte, porque a máscara elimina duas das estrelas mais
-        brilhantes, que estão no céu enevoado junto ao horizonte.
-  \item \textbf{Panorama de 120°:} exposição de 5 minutos sem seguimento, em
-        que as estrelas são riscos (o filtro de forma elimina-os corretamente)
-        e uma projeção cilíndrica que o modelo de câmara não contempla. Está
-        fora do âmbito do sistema.
-\end{itemize}
+Para perceber as três fotografias do teste 3 que ficaram sem solução com as
+duas máscaras, fizemos algumas experiências de diagnóstico, sem alterar o
+código do sistema.
+
+Na fotografia da Nebulosa de Carina, 19 das 20 deteções ``mais brilhantes''
+vinham da escala maior do top-hat. Nessa escala o fluxo de uma deteção soma
+uma área grande, e num campo denso da Via Láctea os nós da nebulosa e os
+enxames acabam por ``brilhar'' mais do que as estrelas isoladas
+(Figura~\ref{fig:carina}). Usando só as escalas $r$ e $2r$, o sistema
+resolve a fotografia corretamente (Carina, Cruzeiro do Sul, Mosca e Vela).
+
+A fotografia de Orion sobre o deserto de Atacama só se resolve com três
+mudanças ao mesmo tempo. A primeira é um campo de visão de cerca de 116°,
+acima dos 100° da grelha: as Plêiades e Sírius estão a 59,5° uma da outra e
+ocupam só 60\% da largura da imagem. A segunda é o modelo olho-de-peixe. A
+terceira é um corte manual do horizonte, porque a máscara elimina duas das
+estrelas mais brilhantes, que estão no céu enevoado junto ao horizonte.
+
+O panorama de 120° é uma exposição de 5 minutos sem seguimento, em que as
+estrelas são riscos (que o filtro de forma, e bem, elimina), com uma
+projeção cilíndrica que o nosso modelo de câmara não contempla. Este está
+simplesmente fora do âmbito do sistema.
 
 \begin{figure}[H]
   \centering
@@ -757,66 +750,65 @@ fotografias do teste 3 sem solução com ambas as máscaras:
 % ---------------------------------------------------------------------
 \section{Discussão e limitações}
 
-\begin{itemize}
-  \item \textbf{Generalização.} O desempenho em fotografias novas (69\% no
-        primeiro contacto com cada conjunto, mas só 3/7 no último) é
-        claramente inferior ao das fotografias de desenvolvimento. Os
-        conjuntos de teste são pequenos, por isso as percentagens têm uma
-        incerteza grande.
-  \item \textbf{Ranking das deteções.} O método assume que as estrelas mais
-        brilhantes da imagem estão entre as mais brilhantes do catálogo. Isso
-        falha em campos densos (Carina), junto ao horizonte (extinção
-        atmosférica) e quando luzes artificiais entram na lista.
-  \item \textbf{Segmentação do céu.} É baseada em regras sobre a textura e o
-        brilho e falha em casos que essas regras não previam (Via Láctea muito
-        densa ou nuvens classificadas como paisagem, céu enevoado junto ao
-        horizonte cortado).
-  \item \textbf{Modelo de câmara.} Pinhole e olho-de-peixe equidistante, com
-        centro ótico no centro da imagem. Fotografias recortadas, editadas,
-        em mosaico ou panorama desviam-se do modelo; duas fotografias de
-        desenvolvimento parecem editadas e a sobreposição tem desvios
-        visíveis. Um modelo com distorção radial extra fazia
-        \emph{overfitting} com poucos pares.
-  \item \textbf{Exposições longas sem seguimento} (estrelas em riscos) não são
-        tratadas. Riscos curtos, como os da fotografia tremida, resolvem-se
-        reduzindo a imagem, mas isso ainda é feito à mão.
-  \item \textbf{Métricas de deteção} nas fotografias reais usam a própria
-        pose como verdade e são por isso otimistas.
-  \item \textbf{Etiquetas.} A verdade de referência foi retirada das
-        descrições das fontes; o caso \texttt{cru\_06} mostra que pode estar
-        incompleta.
-\end{itemize}
+O ponto mais fraco é a generalização. Nas fotografias novas o sistema fica
+claramente abaixo do que faz nas de desenvolvimento: 69\% no total dos
+testes, e só 3/7 no último. Os conjuntos de teste são pequenos, por isso
+estas percentagens têm uma incerteza grande.
+
+Boa parte das falhas vem de um pressuposto do método: que as estrelas mais
+brilhantes da imagem estão entre as mais brilhantes do catálogo. Isto deixa
+de ser verdade em campos muito densos (Carina), junto ao horizonte, onde a
+atmosfera apaga as estrelas, e quando luzes artificiais entram na lista. A
+segmentação do céu também contribui: é feita com regras sobre textura e
+brilho e falha nos casos que essas regras não previram, como a Via Láctea
+muito densa ou nuvens confundidas com paisagem, ou céu enevoado junto ao
+horizonte que acaba cortado.
+
+O modelo de câmara é limitado a \emph{pinhole} e olho-de-peixe equidistante,
+com o centro ótico no centro da imagem. Fotografias recortadas, editadas, em
+mosaico ou em panorama afastam-se deste modelo; duas das fotografias de
+desenvolvimento parecem editadas, e nelas a sobreposição tem desvios
+visíveis. Experimentámos um modelo com distorção radial extra, mas com
+poucos pares fazia \emph{overfitting}. Exposições longas sem seguimento, com
+as estrelas em riscos, também não são tratadas. Riscos curtos, como os da
+fotografia tremida, resolvem-se reduzindo a imagem, mas por enquanto isso é
+feito à mão.
+
+Há ainda duas ressalvas sobre a avaliação. As métricas de deteção nas
+fotografias reais usam a própria pose como verdade e por isso são otimistas.
+E as etiquetas vêm das descrições das fontes; o caso \texttt{cru\_06} mostra
+que podem estar incompletas.
 
 % ---------------------------------------------------------------------
 \section{Conclusão e trabalho futuro}
 
-Construímos um sistema completo, com técnicas clássicas de visão
-computacional, que identifica estrelas e constelações numa fotografia sem
-qualquer informação prévia e estima a pose da câmara com precisão de poucos
-píxeis. A decisão técnica mais importante foi medir os triângulos na esfera
-celeste em vez de no plano da imagem, o que tornou o método robusto a
-objetivas grande angulares. O sistema é conservador: em 26 fotografias de
-teste deu 19 respostas, das quais 18 certas, e rejeitou os controlos
-negativos. Funcionou também nas fotografias que tirámos com um telemóvel,
-com casas iluminadas no enquadramento.
+O sistema que construímos, só com técnicas clássicas de visão computacional,
+identifica estrelas e constelações numa fotografia sem informação prévia e
+estima a pose da câmara com um erro de poucos píxeis. A decisão que mais
+pesou foi passar a medir os triângulos na esfera celeste em vez de no plano
+da imagem; foi isso que fez o método funcionar com grandes angulares. O
+sistema é conservador: nas 26 fotografias de teste deu 19 respostas, 18
+delas certas, e rejeitou os dois controlos negativos. Funcionou também nas
+fotografias que tirámos com o telemóvel, com casas iluminadas no
+enquadramento.
 
-A avaliação em três conjuntos de teste mostrou que o desempenho em
-fotografias novas é bastante inferior ao das fotografias de desenvolvimento,
-e que uma melhoria aparente da segmentação do céu não se confirmava num
-conjunto bloqueado.
+Os três conjuntos de teste mostraram que o desempenho em fotografias novas é
+bastante pior do que nas de desenvolvimento, e que a melhoria que a máscara
+v2 parecia trazer não se confirmou no conjunto bloqueado.
 
-Como trabalho futuro, por ordem de custo/benefício:
+Se continuássemos o trabalho, faríamos por esta ordem (do mais barato e útil
+para o mais trabalhoso):
 \begin{enumerate}
-  \item aceitar deteções da maior escala do top-hat só quando têm um pico
-        alto (estrelas brilhantes), o que resolve o caso de Carina;
+  \item aceitar deteções da escala maior do top-hat só quando têm um pico
+        alto, o que resolve o caso de Carina;
   \item alargar a grelha de campos de visão até cerca de 150°;
-  \item uma tentativa extra com a imagem reduzida quando há demasiadas
-        deteções (fotografias tremidas);
-  \item substituir as regras da máscara do céu por um classificador
-        aprendido (céu / não-céu por blocos) ou classificar cada deteção como
-        estrela ou artefacto com uma pequena rede convolucional treinada nas
-        imagens sintéticas;
-  \item juntar um conjunto de teste maior e bloqueado para medir estas
+  \item acrescentar uma tentativa com a imagem reduzida quando há deteções a
+        mais (fotografias tremidas);
+  \item trocar as regras da máscara do céu por um classificador aprendido
+        (céu / não-céu por blocos), ou classificar cada deteção como estrela
+        ou artefacto com uma pequena rede convolucional treinada nas imagens
+        sintéticas;
+  \item juntar um conjunto de teste maior, e bloqueado, para medir estas
         alterações com menos incerteza.
 \end{enumerate}
 
@@ -824,17 +816,16 @@ Como trabalho futuro, por ordem de custo/benefício:
 \section*{Reprodutibilidade}
 O código está em \url{https://github.com/JoaoMoraissss/Vis-o_Computacional}.
 \begin{itemize}
-  \item \texttt{python src/main.py foto.jpg} --- identifica e desenha as
-        constelações (\texttt{--samples} para todas as fotografias de
-        desenvolvimento; \texttt{--mask 2} para a máscara v2;
-        \texttt{data/proprias/*.jpg} para as fotografias próprias);
-  \item \texttt{python src/evaluate.py --set all} --- reproduz as Tabelas
+  \item \texttt{python src/main.py foto.jpg} identifica e desenha as
+        constelações (\texttt{--samples} corre todas as fotografias de
+        desenvolvimento, \texttt{--mask 2} usa a máscara v2 e
+        \texttt{data/proprias/*.jpg} corre as fotografias próprias);
+  \item \texttt{python src/evaluate.py --set all} reproduz as Tabelas
         \ref{tab:reais} e \ref{tab:mascara} (\texttt{--synthetic} para as
         sintéticas).
 \end{itemize}
 
-% TODO (autores): acrescentar, se a cadeira pedir, uma secção com a
-% contribuição de cada membro do grupo.
+% TODO: secção com a contribuição de cada um, se a cadeira pedir.
 
 % ---------------------------------------------------------------------
 \begin{thebibliography}{9}
