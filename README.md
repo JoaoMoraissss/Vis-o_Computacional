@@ -94,7 +94,7 @@ data/
 results/
   metrics/             tabelas da avaliação da versão final (v1_antes_melhorias/ e mascara_v2/ para comparar)
   fotos_proprias/      resultados nas nossas fotos
-report/                relatório em LaTeX (relatorio.tex) e figuras
+report/                relatório final em PDF
 presentation/          apresentação
 ```
 
@@ -139,4 +139,4 @@ tremida é resolvida pela tentativa automática com a imagem reduzida (explicaç
 - O modelo de lente (radial, um parâmetro) pode ajustar demais em fotos editadas.
 - Os conjuntos de teste são pequenos, por isso as percentagens têm muita incerteza.
 
-O relatório (`report/relatorio.tex`) descreve o método e a avaliação em pormenor.
+O relatório (`report/relatorio_constelacoes_up202307077_up202308366.pdf`) descreve o método e a avaliação em pormenor.
