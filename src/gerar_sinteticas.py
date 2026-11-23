@@ -13,7 +13,7 @@ from catalog import load_stars, load_constellations, constellation_center
 from synthetic import render_sky, draw_constellations
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT_FIG = ROOT / "results" / "figures"
+OUT_FIG = ROOT / "results" / "ceu_sintetico"
 OUT_SYN = ROOT / "data" / "synthetic"
 OUT_FIG.mkdir(parents=True, exist_ok=True)
 OUT_SYN.mkdir(parents=True, exist_ok=True)
@@ -24,15 +24,15 @@ consts = load_constellations()
 # 1) Orion "limpo" e com as constelações desenhadas: confirma que a projeção está certa
 ra0, dec0 = constellation_center("Ori", stars, consts)
 img, truth = render_sky(stars, ra0, dec0, fov_deg=50, roll_deg=0, seed=0)
-cv2.imwrite(str(OUT_FIG / "fase1_orion.png"), img)
-cv2.imwrite(str(OUT_FIG / "fase1_orion_linhas.png"),
+cv2.imwrite(str(OUT_FIG / "orion_sintetico.png"), img)
+cv2.imwrite(str(OUT_FIG / "orion_sintetico_linhas.png"),
             draw_constellations(img, stars, consts, ra0, dec0, 50, 0))
 print(f"Orion: {len(truth)} estrelas visíveis na imagem")
 
 # 2) Mesmo céu, mas difícil: rodado, com ruído, estrelas em falta e falsas estrelas
 img2, truth2 = render_sky(stars, ra0, dec0, fov_deg=50, roll_deg=35, mag_limit=4.5,
                           noise_std=8, gradient=90, drop_frac=0.2, n_fake=25, seed=1)
-cv2.imwrite(str(OUT_FIG / "fase1_orion_dificil.png"), img2)
+cv2.imwrite(str(OUT_FIG / "orion_sintetico_dificil.png"), img2)
 
 # 3) Pequeno dataset aleatório com verdade de referência, para as fases seguintes
 rng = np.random.default_rng(42)

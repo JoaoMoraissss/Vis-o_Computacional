@@ -48,7 +48,7 @@ Para voltar a gerar o catálogo a partir do HYG original (~34 MB): `python src/c
 Todos os comandos são corridos a partir da raiz do projeto.
 
 ```sh
-# identificar constelações numa ou mais fotos (resultado em results/demo/)
+# identificar constelações numa ou mais fotos (resultado em results/fotos_identificadas/)
 python src/main.py data/samples/orion_01_niittee.jpg
 python src/main.py --samples                  # todas as fotos de data/samples/
 python src/main.py foto.jpg --out pasta/      # outra pasta de saída
@@ -62,7 +62,7 @@ python src/evaluate.py --set samples          # test, test2, test3, test4, sampl
 python src/star_classifier.py
 python src/evaluate.py --synthetic            # também as imagens sintéticas
 
-# gerar as 20 imagens sintéticas (data/synthetic/) e as figuras da fase 1
+# gerar as 20 imagens sintéticas (data/synthetic/) e as imagens de results/ceu_sintetico/
 python src/gerar_sinteticas.py
 ```
 
@@ -85,7 +85,7 @@ src/
   projection.py        modelo de câmara e projeção do catálogo
   overlay.py           desenho das constelações por cima da foto
   synthetic.py         gerador de céus sintéticos com verdade de referência
-  gerar_sinteticas.py  gera as imagens sintéticas e as figuras da fase 1
+  gerar_sinteticas.py  gera as imagens sintéticas e as de verificação da projeção
 data/
   catalog/             estrelas (mag <= 6,5) e linhas das constelações
   samples/             15 fotos usadas para afinar o método
@@ -94,6 +94,8 @@ data/
 results/
   metrics/             tabelas da avaliação da versão final (v1_antes_melhorias/ e mascara_v2/ para comparar)
   fotos_proprias/      resultados nas nossas fotos
+  fotos_identificadas/ saída do main.py (gerada ao correr, não está no git)
+  ceu_sintetico/       céus sintéticos de Órion para verificar a projeção (gerada, não está no git)
 report/                relatório final em PDF
 presentation/          apresentação
 ```

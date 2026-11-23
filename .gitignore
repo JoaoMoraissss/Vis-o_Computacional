@@ -21,8 +21,8 @@ Thumbs.db
 data/catalog/hygdata_v41.csv
 data/synthetic/
 data/catalog/triangles.npz
-results/demo/
+results/fotos_identificadas/
 data/catalog/triangles_sphere.npz
 
 # saídas geradas por src/gerar_sinteticas.py
-results/figures/
+results/ceu_sintetico/
