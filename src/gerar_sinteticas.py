@@ -1,9 +1,9 @@
 """
-Fase 1: gerar céus sintéticos e verificar visualmente a projeção.
+Gera as 20 imagens sintéticas (data/synthetic/) e as figuras de verificação da projeção.
 
 Correr a partir da raiz do projeto:
     python src/catalog.py      # só da primeira vez (descarrega os dados)
-    python src/fase1_demo.py
+    python src/gerar_sinteticas.py
 """
 from pathlib import Path
 import cv2

@@ -63,10 +63,10 @@ python src/star_classifier.py
 python src/evaluate.py --synthetic            # também as imagens sintéticas
 
 # gerar as 20 imagens sintéticas (data/synthetic/) e as figuras da fase 1
-python src/fase1_demo.py
+python src/gerar_sinteticas.py
 ```
 
-As imagens sintéticas não estão no repositório: é preciso correr `fase1_demo.py` antes
+As imagens sintéticas não estão no repositório: é preciso correr `gerar_sinteticas.py` antes
 de usar `--synthetic`.
 
 ## Estrutura
@@ -85,7 +85,7 @@ src/
   projection.py        modelo de câmara e projeção do catálogo
   overlay.py           desenho das constelações por cima da foto
   synthetic.py         gerador de céus sintéticos com verdade de referência
-  fase1_demo.py        gera as imagens sintéticas e as figuras da fase 1
+  gerar_sinteticas.py  gera as imagens sintéticas e as figuras da fase 1
 data/
   catalog/             estrelas (mag <= 6,5) e linhas das constelações
   samples/             15 fotos usadas para afinar o método
