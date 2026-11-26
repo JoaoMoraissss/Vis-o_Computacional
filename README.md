@@ -141,4 +141,4 @@ tremida é resolvida pela tentativa automática com a imagem reduzida (explicaç
 - O modelo de lente (radial, um parâmetro) pode ajustar demais em fotos editadas.
 - Os conjuntos de teste são pequenos, por isso as percentagens têm muita incerteza.
 
-O relatório (`report/relatorio_constelacoes_up202307077_up202308366.pdf`) descreve o método e a avaliação em pormenor.
+O relatório (`report/Report_VC.pdf`) descreve o método e a avaliação em pormenor.
